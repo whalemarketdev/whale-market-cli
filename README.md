@@ -2,6 +2,8 @@
 
 A command-line interface for the Whales Market trading platform, built with Node.js and TypeScript.
 
+**Repository:** [https://github.com/whalemarketdev/whale-market-cli](https://github.com/whalemarketdev/whale-market-cli)
+
 ## Features
 
 - 🐋 **Multi-chain Support**: Solana and EVM chains (Ethereum, BSC, Polygon, etc.)
@@ -25,7 +27,7 @@ npm install -g whale-market-cli
 ### Shell Script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/whales-market/whale-market-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/whalemarketdev/whale-market-cli/main/install.sh | bash
 ```
 
 ### Requirements
@@ -246,7 +248,7 @@ whales wallet address --output json | jq -r '.address'
 
 ```bash
 # Clone repository
-git clone https://github.com/whales-market/whale-market-cli.git
+git clone https://github.com/whalemarketdev/whale-market-cli.git
 cd whale-market-cli
 
 # Install dependencies
@@ -316,5 +318,5 @@ MIT
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/whales-market/whale-market-cli/issues
+- GitHub Issues: https://github.com/whalemarketdev/whale-market-cli/issues
 - Documentation: https://docs.whales.market

@@ -18,23 +18,32 @@
     "test": "jest",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["whales", "market", "cli", "trading", "crypto"],
+  "keywords": ["whales", "market", "cli", "trading", "crypto", "blockchain", "defi", "solana", "ethereum"],
   "license": "MIT",
+  "author": "Whale Market",
+  "homepage": "https://whales.market",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/whalemarketdev/whale-market-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/whalemarketdev/whale-market-cli/issues"
+  },
   "dependencies": {
-    "commander": "^12.1.0",
-    "axios": "^1.7.0",
-    "chalk": "^4.1.2",
-    "cli-table3": "^0.6.5",
-    "inquirer": "^8.2.6",
-    "ora": "^5.4.1",
-    "dotenv": "^16.4.0",
-    "@solana/web3.js": "^1.95.0",
-    "@solana/spl-token": "^0.3.9",
-    "ethers": "^6.13.0",
-    "tweetnacl": "^1.0.3",
-    "bs58": "^5.0.0",
-    "bip39": "^3.1.0",
-    "conf": "^10.2.0"
+    "commander": "12.1.0",
+    "axios": "1.7.0",
+    "chalk": "4.1.2",
+    "cli-table3": "0.6.5",
+    "inquirer": "8.2.6",
+    "ora": "5.4.1",
+    "dotenv": "16.4.0",
+    "@solana/web3.js": "1.95.0",
+    "@solana/spl-token": "0.3.9",
+    "ethers": "6.13.0",
+    "tweetnacl": "1.0.3",
+    "bs58": "5.0.0",
+    "bip39": "3.1.0",
+    "conf": "10.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

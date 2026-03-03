@@ -1,4 +1,17 @@
 #!/usr/bin/env node
+// Suppress punycode deprecation warning from transitive dependencies
+// This warning comes from @solana/web3.js -> node-fetch -> whatwg-url
+// The userland punycode package is installed, but Node.js still uses built-in module
+process.removeAllListeners('warning');
+process.on('warning', (warning) => {
+  if (warning.name === 'DeprecationWarning' && warning.message.includes('punycode')) {
+    // Suppress punycode deprecation warnings from transitive dependencies
+    return;
+  }
+  // Allow other warnings through
+  console.warn(warning.name, warning.message);
+});
+
 import { Command } from 'commander';
 import { setupCommand } from './commands/setup';
 import { walletCommand } from './commands/wallet';
