@@ -1,6 +1,6 @@
 {
   "name": "whale-market-cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "CLI for Whales Market trading platform",
   "bin": {
     "whales": "bin/whales"
