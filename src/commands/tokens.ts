@@ -7,15 +7,18 @@ import { handleOutput, handleError, printTokensTable, printTokensTableDetailed, 
 export const tokensCommand = new Command('tokens')
   .description('Token operations');
 
-// List tokens
+// List tokens (uses V2 API - same as whales.market frontend)
 tokensCommand
   .command('list')
   .description('List all tokens')
-  .option('--status <status>', 'Filter by status (active|ended)')
+  .option('--status <status>', 'Filter by status (active|settling|ended)')
   .option('--chain <id>', 'Filter by chain ID')
   .option('--limit <n>', 'Limit results', '20')
   .option('--page <n>', 'Page number', '1')
   .option('--detailed', 'Show detailed information with full addresses')
+  .option('--no-fdv', 'Hide Implied FDV column')
+  .option('--no-volume', 'Hide 24h Volume column')
+  .option('--sort <sort>', 'Sort by (vol|price|created) - vol default', 'vol')
   .action(async (options, command) => {
     const globalOpts = command.optsWithGlobals();
     const spinner = ora('Fetching tokens...').start();
@@ -23,29 +26,58 @@ tokensCommand
     try {
       const params: any = {
         take: parseInt(options.limit),
-        page: parseInt(options.page)
+        page: parseInt(options.page),
+        type: 'pre_market',
+        category: 'pre_market',
+        sort_vol: 'DESC'
       };
       
-      if (options.status) params.status = options.status;
-      if (options.chain) params.chain_id = options.chain;
+      // Status filter - default: active + settling (like frontend)
+      if (options.status) {
+        params.statuses = [options.status];
+      } else {
+        params.statuses = ['active', 'settling'];
+      }
       
-      const response = await apiClient.getTokens(params);
+      if (options.chain) params.chain_id = parseInt(options.chain);
+      
+      // Sort option
+      if (options.sort === 'price') {
+        delete params.sort_vol;
+        params.sort_last_price = 'DESC';
+      } else if (options.sort === 'created') {
+        delete params.sort_vol;
+        params.sort_created_at = 'DESC';
+      }
+      
+      const response: any = await apiClient.getTokensV2(params);
       spinner.stop();
       
-      const tokens = response.data || [];
+      // V2 API returns { data: { count, list: [...] } }
+      const tokens = response.data?.list || response.data || [];
       
+      // FDV and 24h Vol shown by default, use --no-fdv/--no-volume to hide
+      const showFdv = options.fdv !== false;
+      const showVolume = options.volume !== false;
+
       // If detailed mode or JSON/plain format, show full data
       if (options.detailed || globalOpts.format === 'json' || globalOpts.format === 'plain') {
         handleOutput(
           tokens,
           globalOpts.format,
-          options.detailed ? printTokensTableDetailed : printTokensTable
+          options.detailed ? printTokensTableDetailed : (data: any) => printTokensTable(data, {
+            showFdv,
+            showVolume
+          })
         );
       } else {
         handleOutput(
           tokens,
           globalOpts.format,
-          printTokensTable
+          (data: any) => printTokensTable(data, {
+            showFdv,
+            showVolume
+          })
         );
       }
     } catch (error: any) {
@@ -87,7 +119,7 @@ tokensCommand
     }
   });
 
-// Search tokens
+// Search tokens (uses V2 API)
 tokensCommand
   .command('search <query>')
   .description('Search tokens')
@@ -97,20 +129,23 @@ tokensCommand
     const spinner = ora('Searching tokens...').start();
     
     try {
-      const params = {
+      const params: any = {
         search: query,
-        take: parseInt(options.limit)
+        take: parseInt(options.limit),
+        type: 'pre_market',
+        category: 'pre_market',
+        statuses: ['active', 'settling']
       };
       
-      const response = await apiClient.getTokens(params);
+      const response: any = await apiClient.getTokensV2(params);
       spinner.stop();
       
-      const tokens = response.data || [];
+      const tokens = response.data?.list || response.data || [];
       
       handleOutput(
         tokens,
         globalOpts.format,
-        printTokensTable
+        (data: any) => printTokensTable(data, { showFdv: true, showVolume: true })
       );
     } catch (error: any) {
       spinner.stop();
@@ -135,7 +170,7 @@ tokensCommand
       handleOutput(
         tokens,
         globalOpts.format,
-        printTokensTable
+        (data: any) => printTokensTable(data, { showFdv: true, showVolume: true })
       );
     } catch (error: any) {
       spinner.stop();

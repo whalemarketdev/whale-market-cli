@@ -49,6 +49,15 @@ export class ApiClient {
   async getTokens(params?: any): Promise<ApiResponse<any[]>> {
     return this.get('/tokens', params);
   }
+
+  /**
+   * Get tokens from V2 API - same as whales.market frontend
+   * Endpoint: GET /v2/tokens
+   * Returns: { data: { count, list: [...] } }
+   */
+  async getTokensV2(params?: any): Promise<ApiResponse<{ count: number; list: any[] }>> {
+    return this.get('/v2/tokens', params);
+  }
   
   async getToken(id: string): Promise<ApiResponse<any>> {
     return this.get(`/tokens/${id}`);
@@ -56,6 +65,14 @@ export class ApiClient {
   
   async getOffers(params?: any): Promise<ApiResponse<any[]>> {
     return this.get('/transactions/offers', params);
+  }
+
+  /**
+   * Get offers from V2 API - used for order book (has more complete data)
+   * Endpoint: GET /v2/offers
+   */
+  async getOffersV2(params?: any): Promise<ApiResponse<any[]>> {
+    return this.get('/v2/offers', params);
   }
   
   async getOffer(id: string): Promise<ApiResponse<any>> {

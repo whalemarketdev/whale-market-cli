@@ -76,25 +76,43 @@ export function getChainName(chainId: number | string | undefined, network?: any
 }
 
 // Table formatters
-export function printTokensTable(tokens: any[]): void {
+export function printTokensTable(tokens: any[], options?: { showFdv?: boolean; showVolume?: boolean }): void {
   if (!tokens || tokens.length === 0) {
     console.log('No tokens found');
     return;
   }
   
+  // Build dynamic columns based on options
+  const heads = [
+    chalk.cyan('ID'),
+    chalk.cyan('Name'),
+    chalk.cyan('Symbol'),
+    chalk.cyan('Status'),
+    chalk.cyan('Price'),
+  ];
+  
+  const colWidths = [38, 20, 10, 10, 12];
+  
+  if (options?.showFdv) {
+    heads.push(chalk.cyan('Implied FDV'));
+    colWidths.push(15);
+  }
+  
+  if (options?.showVolume) {
+    heads.push(chalk.cyan('24h Vol'));
+    colWidths.push(12);
+  }
+  
+  heads.push(
+    chalk.cyan('Chain'),
+    chalk.cyan('Token ID/Address'),
+    chalk.cyan('Type')
+  );
+  colWidths.push(18, 50, 12);
+  
   const table = new Table({
-    head: [
-      chalk.cyan('ID'),
-      chalk.cyan('Name'),
-      chalk.cyan('Symbol'),
-      chalk.cyan('Status'),
-      chalk.cyan('Price'),
-      chalk.cyan('Last Price'),
-      chalk.cyan('Chain'),
-      chalk.cyan('Token ID/Address'),
-      chalk.cyan('Type')
-    ],
-    colWidths: [38, 20, 10, 10, 12, 12, 18, 50, 12],
+    head: heads,
+    colWidths: colWidths,
     style: {
       head: [],
       border: []
@@ -108,7 +126,24 @@ export function printTokensTable(tokens: any[]): void {
     // Price display - prefer last_price if price is 0
     const priceValue = (token.price && parseFloat(token.price.toString()) > 0) ? token.price : token.last_price;
     const displayPrice = formatPrice(priceValue);
-    const displayLastPrice = formatPrice(token.last_price);
+    
+    // Calculate Implied FDV (total_supply × last_price)
+    // total_supply can be at top level or nested in token_info
+    let impliedFdv = '-';
+    const totalSupply = token.total_supply ?? token.token_info?.total_supply ?? token.info?.total_supply;
+    const lastPrice = token.last_price ?? token.price;
+    if (lastPrice && totalSupply) {
+      const fdv = parseFloat(totalSupply.toString()) * parseFloat(lastPrice.toString());
+      impliedFdv = formatPrice(fdv);
+    }
+    
+    // Get 24h volume
+    let volume24h = '-';
+    if (token.volume && typeof token.volume === 'object' && token.volume.h24) {
+      volume24h = formatPrice(token.volume.h24);
+    } else if (token.volume_24h) {
+      volume24h = formatPrice(token.volume_24h);
+    }
     
     // Format addresses - show token_id (for orders) or address/pre_token_address
     // Show full addresses for agent analysis
@@ -117,17 +152,29 @@ export function printTokensTable(tokens: any[]): void {
     // Show full address/token_id (up to 50 chars fits in column)
     const displayAddress = address !== '-' ? (address.length > 50 ? address.substring(0, 47) + '...' : address) : (tokenId !== '-' ? (tokenId.length > 50 ? tokenId.substring(0, 47) + '...' : tokenId) : '-');
     
-    table.push([
+    const row: any[] = [
       token.id || '-',  // Full UUID ID
       truncate(token.name || '-', 23),
       token.symbol || '-',
       formatStatus(token.status || 'unknown'),
       displayPrice,
-      displayLastPrice,
+    ];
+    
+    if (options?.showFdv) {
+      row.push(impliedFdv);
+    }
+    
+    if (options?.showVolume) {
+      row.push(volume24h);
+    }
+    
+    row.push(
       networkName,
       displayAddress,
       token.type || token.category || '-'
-    ]);
+    );
+    
+    table.push(row);
   });
   
   console.log(table.toString());
