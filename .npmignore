@@ -4,4 +4,3 @@ test/
 !*.d.ts
 tsconfig.json
 .gitignore
-.env*

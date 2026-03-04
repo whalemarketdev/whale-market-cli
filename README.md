@@ -11,7 +11,7 @@ A command-line interface for the Whales Market trading platform, built with Node
 - 📊 **Token Operations**: Browse, search, and view token details
 - 💰 **Trading**: View and manage offers and orders
 - 📈 **Portfolio Tracking**: Monitor your positions and portfolio
-- 📚 **Order Book**: Access order book v2 operations
+- 📚 **Order Book**: View order book per token (`whales book <symbol>`) + orderbook v2 operations
 - 🎁 **Referral System**: Track campaigns and earnings
 - 🎨 **Beautiful Output**: Table and JSON output formats
 - ⚡ **Fast & Reliable**: Built with TypeScript for type safety
@@ -53,8 +53,11 @@ This will guide you through:
 ### 2. First Commands
 
 ```bash
-# List tokens
+# List tokens (pre-market with Implied FDV, 24h Vol)
 whales tokens list
+
+# View order book for a token
+whales book MEGA
 
 # View your offers
 whales offers my
@@ -84,11 +87,15 @@ whales --help
 
 ### Token Operations
 
-- `whales tokens list [--status active|ended] [--chain <id>]` - List tokens
+- `whales tokens list [--status active|settling|ended] [--chain <id>] [--limit <n>] [--sort vol|price|created] [--no-fdv] [--no-volume]` - List pre-market tokens (Implied FDV, 24h Vol by default)
 - `whales tokens get <token-id>` - Get token details
 - `whales tokens search <query> [--limit <n>]` - Search tokens
 - `whales tokens highlight` - Get highlighted/trending tokens
 - `whales tokens stats` - Get prediction stats
+
+### Order Book (per token)
+
+- `whales book <symbol> [--depth <n>] [--chain-id <id>] [--format json|plain]` - View order book (SELL/BUY orders, spread, fill status, match type)
 
 ### Offer Management
 
@@ -110,7 +117,7 @@ whales --help
 - `whales portfolio positions [--type open|filled]` - List positions
 - `whales portfolio balance [--token <symbol>]` - Show token balances
 
-### Order Book V2
+### Order Book V2 (aggregated)
 
 - `whales orderbook snapshot` - Order book snapshot statistics
 - `whales orderbook positions --telegram-id <id>` - Get positions
@@ -138,32 +145,30 @@ whales tokens list
 ```
 
 ```
-┌────────┬─────────────────────────────┬──────────┬────────┬───────────┬─────────────┐
-│ ID     │ Name                        │ Symbol   │ Status │ Price     │ Chain       │
-├────────┼─────────────────────────────┼──────────┼────────┼───────────┼─────────────┤
-│ 123    │ Example Token               │ EXMP     │ active │ $0.45     │ Solana      │
-└────────┴─────────────────────────────┴──────────┴────────┴───────────┴─────────────┘
+┌────────┬─────────────────────────────┬──────────┬────────┬──────────────┬──────────┬─────────────┐
+│ ID     │ Name                        │ Symbol   │ Price  │ Implied FDV  │ 24h Vol   │ Status       │
+├────────┼─────────────────────────────┼──────────┼────────┼──────────────┼──────────┼─────────────┤
+│ uuid   │ Example Token               │ EXMP     │ $0.45  │ $45M        │ $1.2M     │ active       │
+└────────┴─────────────────────────────┴──────────┴────────┴──────────────┴──────────┴─────────────┘
 ```
 
 ### JSON Format
 
 ```bash
-whales tokens list --output json
+whales tokens list --format json
 ```
 
 ```json
-{
-  "data": [
-    {
-      "id": 123,
-      "name": "Example Token",
-      "symbol": "EXMP",
-      "status": "active",
-      "price": "0.45",
-      "chain_id": 666666
-    }
-  ]
-}
+[
+  {
+    "id": "uuid",
+    "name": "Example Token",
+    "symbol": "EXMP",
+    "status": "active",
+    "last_price": "0.45",
+    "chain_id": 56
+  }
+]
 ```
 
 ## Configuration
@@ -174,22 +179,11 @@ Configuration is stored in platform-specific locations:
 - **Linux**: `~/.config/whales-market-cli/config.json`
 - **Windows**: `%APPDATA%\whales-market-cli\config.json`
 
-### Environment Variables
-
-You can override config values with environment variables:
-
-```bash
-export WHALES_API_URL="https://api.whales.market"
-export WHALES_PRIVATE_KEY="your-private-key"
-export WHALES_WALLET_TYPE="solana"
-export WHALES_CHAIN_ID="666666"
-```
-
 ### Global Options
 
 All commands support these global options:
 
-- `-o, --output <format>` - Output format (table|json), default: table
+- `-f, --format <format>` - Output format (table|json|plain), default: table
 - `-k, --private-key <key>` - Private key (overrides config)
 - `--api-url <url>` - API endpoint URL
 - `--chain-id <id>` - Chain ID
@@ -199,14 +193,17 @@ All commands support these global options:
 ### Browse Tokens
 
 ```bash
-# List active tokens
+# List active tokens (with Implied FDV, 24h Vol)
 whales tokens list --status active --limit 10
 
 # Search for a token
-whales tokens search "example"
+whales tokens search "MEGA"
 
 # Get token details
-whales tokens get 123
+whales tokens get <token-id>
+
+# View order book for a token
+whales book MEGA --depth 5
 ```
 
 ### Manage Offers
@@ -236,10 +233,13 @@ whales portfolio positions --type open
 
 ```bash
 # Get tokens as JSON
-whales tokens list --output json | jq '.data[0].name'
+whales tokens list --format json | jq '.[0].name'
+
+# View order book as JSON
+whales book MEGA --format json | jq '.sell_orders'
 
 # Check if wallet is configured
-whales wallet address --output json | jq -r '.address'
+whales wallet address --format json | jq -r '.address'
 ```
 
 ## Development

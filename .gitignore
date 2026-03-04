@@ -7,10 +7,6 @@ yarn.lock
 dist/
 *.tsbuildinfo
 
-# Environment
-.env
-.env.local
-
 # IDE
 .vscode/
 .idea/
