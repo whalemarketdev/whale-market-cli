@@ -87,7 +87,7 @@ whales --help
 
 ### Token Operations
 
-- `whales tokens list [--status active|settling|ended] [--chain <id>] [--limit <n>] [--sort vol|price|created] [--no-fdv] [--no-volume]` - List pre-market tokens (Implied FDV, 24h Vol by default)
+- `whales tokens list [--status active|settling|ended] [--chain <id>] [--limit <n>] [--sort vol|price|created] [--no-fdv] [--no-volume] [--no-total-vol] [--show-address]` - List pre-market tokens (Implied FDV, 24h Vol, Total Vol by default)
 - `whales tokens get <token-id>` - Get token details
 - `whales tokens search <query> [--limit <n>]` - Search tokens
 - `whales tokens highlight` - Get highlighted/trending tokens
@@ -145,11 +145,11 @@ whales tokens list
 ```
 
 ```
-┌────────┬─────────────────────────────┬──────────┬────────┬──────────────┬──────────┬─────────────┐
-│ ID     │ Name                        │ Symbol   │ Price  │ Implied FDV  │ 24h Vol   │ Status       │
-├────────┼─────────────────────────────┼──────────┼────────┼──────────────┼──────────┼─────────────┤
-│ uuid   │ Example Token               │ EXMP     │ $0.45  │ $45M        │ $1.2M     │ active       │
-└────────┴─────────────────────────────┴──────────┴────────┴──────────────┴──────────┴─────────────┘
+┌────────┬─────────────────────────────┬──────────┬────────┬────────┬──────────────┬──────────┬──────────┬──────────────────┬──────────┐
+│ ID     │ Name                        │ Symbol   │ Status │ Price  │ Implied FDV  │ 24h Vol   │ Total Vol│ Chain            │ Type     │
+├────────┼─────────────────────────────┼──────────┼────────┼────────┼──────────────┼──────────┼──────────┼──────────────────┼──────────┤
+│ uuid   │ Example Token               │ EXMP     │ active │ $0.45  │ $45M         │ $1.2M     │ $5.6M     │ BNB(56)          │ pre_market│
+└────────┴─────────────────────────────┴──────────┴────────┴────────┴──────────────┴──────────┴──────────┴──────────────────┴──────────┘
 ```
 
 ### JSON Format

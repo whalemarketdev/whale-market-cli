@@ -18,6 +18,8 @@ tokensCommand
   .option('--detailed', 'Show detailed information with full addresses')
   .option('--no-fdv', 'Hide Implied FDV column')
   .option('--no-volume', 'Hide 24h Volume column')
+  .option('--no-total-vol', 'Hide Total Volume column')
+  .option('--show-address', 'Show Token ID/Address column')
   .option('--sort <sort>', 'Sort by (vol|price|created) - vol default', 'vol')
   .action(async (options, command) => {
     const globalOpts = command.optsWithGlobals();
@@ -56,9 +58,11 @@ tokensCommand
       // V2 API returns { data: { count, list: [...] } }
       const tokens = response.data?.list || response.data || [];
       
-      // FDV and 24h Vol shown by default, use --no-fdv/--no-volume to hide
+      // FDV, 24h Vol, Total Vol shown by default
       const showFdv = options.fdv !== false;
       const showVolume = options.volume !== false;
+      const showTotalVol = options.totalVol !== false;
+      const showAddress = !!options.showAddress;
 
       // If detailed mode or JSON/plain format, show full data
       if (options.detailed || globalOpts.format === 'json' || globalOpts.format === 'plain') {
@@ -67,7 +71,9 @@ tokensCommand
           globalOpts.format,
           options.detailed ? printTokensTableDetailed : (data: any) => printTokensTable(data, {
             showFdv,
-            showVolume
+            showVolume,
+            showTotalVol,
+            showAddress
           })
         );
       } else {
@@ -76,7 +82,9 @@ tokensCommand
           globalOpts.format,
           (data: any) => printTokensTable(data, {
             showFdv,
-            showVolume
+            showVolume,
+            showTotalVol,
+            showAddress
           })
         );
       }

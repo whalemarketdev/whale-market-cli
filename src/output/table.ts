@@ -76,7 +76,7 @@ export function getChainName(chainId: number | string | undefined, network?: any
 }
 
 // Table formatters
-export function printTokensTable(tokens: any[], options?: { showFdv?: boolean; showVolume?: boolean }): void {
+export function printTokensTable(tokens: any[], options?: { showFdv?: boolean; showVolume?: boolean; showTotalVol?: boolean; showAddress?: boolean }): void {
   if (!tokens || tokens.length === 0) {
     console.log('No tokens found');
     return;
@@ -103,12 +103,18 @@ export function printTokensTable(tokens: any[], options?: { showFdv?: boolean; s
     colWidths.push(12);
   }
   
-  heads.push(
-    chalk.cyan('Chain'),
-    chalk.cyan('Token ID/Address'),
-    chalk.cyan('Type')
-  );
-  colWidths.push(18, 50, 12);
+  if (options?.showTotalVol) {
+    heads.push(chalk.cyan('Total Vol'));
+    colWidths.push(12);
+  }
+  
+  heads.push(chalk.cyan('Chain'), chalk.cyan('Type'));
+  colWidths.push(18, 12);
+  
+  if (options?.showAddress) {
+    heads.push(chalk.cyan('Token ID/Address'));
+    colWidths.push(50);
+  }
   
   const table = new Table({
     head: heads,
@@ -145,6 +151,13 @@ export function printTokensTable(tokens: any[], options?: { showFdv?: boolean; s
       volume24h = formatPrice(token.volume_24h);
     }
     
+    // Get total volume
+    let totalVol = '-';
+    const totalVolVal = token.total_volume ?? token.volume?.total_vol;
+    if (totalVolVal != null) {
+      totalVol = formatPrice(totalVolVal);
+    }
+    
     // Format addresses - show token_id (for orders) or address/pre_token_address
     // Show full addresses for agent analysis
     const tokenId = token.token_id || '-';
@@ -168,11 +181,14 @@ export function printTokensTable(tokens: any[], options?: { showFdv?: boolean; s
       row.push(volume24h);
     }
     
-    row.push(
-      networkName,
-      displayAddress,
-      token.type || token.category || '-'
-    );
+    if (options?.showTotalVol) {
+      row.push(totalVol);
+    }
+    
+    row.push(networkName, token.type || token.category || '-');
+    if (options?.showAddress) {
+      row.push(displayAddress);
+    }
     
     table.push(row);
   });
