@@ -19,7 +19,7 @@ export const helpCommand = new Command('help')
     
     console.log(chalk.yellow('GLOBAL OPTIONS:'));
     console.log(chalk.white('  -f, --format <format>     Output format: table (default), json, or plain'));
-    console.log(chalk.white('  -k, --private-key <key>   Private key (overrides config)'));
+    console.log(chalk.white('  -k, --private-key <key>   (deprecated) Use wallet commands instead'));
     console.log(chalk.white('  --api-url <url>           API endpoint URL'));
     console.log(chalk.white('  --chain-id <id>           Chain ID (default: 666666)'));
     console.log(chalk.white('  -V, --version             Show version number'));
@@ -34,14 +34,17 @@ export const helpCommand = new Command('help')
     
     // Wallet
     console.log(chalk.cyan('  wallet'));
-    console.log(chalk.gray('    Wallet management'));
+    console.log(chalk.gray('    Wallet management (multi-chain from one seed)'));
     console.log(chalk.white('    Subcommands:'));
-    console.log(chalk.white('      create [--type solana|evm]    Generate new wallet'));
-    console.log(chalk.white('      import <private-key>         Import existing wallet'));
-    console.log(chalk.white('      show                         Display wallet details'));
-    console.log(chalk.white('      address                      Show wallet address'));
-    console.log(chalk.white('      link <target-address>        Link multiple wallets'));
-    console.log(chalk.white('    Usage: whales wallet create --type solana\n'));
+    console.log(chalk.white('      create [--name <label>]      Generate new wallet'));
+    console.log(chalk.white('      import <mnemonic> [--name]   Import by 12/24-word seed'));
+    console.log(chalk.white('      list                         List saved wallets'));
+    console.log(chalk.white('      use <name>                   Switch active wallet'));
+    console.log(chalk.white('      show [--name <label>]        Show addresses on all chains'));
+    console.log(chalk.white('      remove <name>                Remove wallet'));
+    console.log(chalk.white('      address                      Show address for current chain'));
+    console.log(chalk.white('      link <target-address>        Link wallets (placeholder)'));
+    console.log(chalk.white('    Usage: whales wallet create --name main\n'));
     
     // Tokens
     console.log(chalk.cyan('  tokens'));
@@ -150,8 +153,6 @@ export const helpCommand = new Command('help')
     
     console.log(chalk.white('  Environment variables:'));
     console.log(chalk.gray('    WHALES_API_URL      - API endpoint URL'));
-    console.log(chalk.gray('    WHALES_PRIVATE_KEY  - Private key'));
-    console.log(chalk.gray('    WHALES_WALLET_TYPE  - Wallet type (solana|evm)'));
     console.log(chalk.gray('    WHALES_CHAIN_ID     - Chain ID\n'));
     
     console.log(chalk.yellow('GETTING HELP:\n'));

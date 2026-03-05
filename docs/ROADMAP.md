@@ -9,7 +9,7 @@ Add commands that interact directly with Whales Market smart contracts across mu
 ## 1. Multi-chain Wallet Management via Seed Phrase
 
 ### Requirements
-- Store wallets as **12-word BIP39 mnemonics** instead of raw private keys
+- Store wallets as **BIP39 mnemonics** (12 or 24 words) instead of raw private keys
 - Support **multiple wallets** (multi-seed) with the ability to switch between them
 - When interacting with a chain, **derive keys using the correct derivation path** for that chain
 - `wallet show` displays **full addresses on all chains** from a single seed
@@ -26,7 +26,7 @@ Add commands that interact directly with Whales Market smart contracts across mu
 ```typescript
 interface WalletEntry {
   name: string;        // wallet label, e.g. "main", "trading"
-  mnemonic: string;    // 12-word seed phrase (encrypted?)
+  mnemonic: string;    // 12/24-word seed phrase (plain text in config; encryption TBD)
   createdAt: string;
 }
 
@@ -43,12 +43,16 @@ interface ConfigSchema {
 ### Commands to Add/Update
 ```
 wallet create [--name <label>]      # generate new seed, save to config
-wallet import <mnemonic> [--name]   # import 12-word seed
+wallet import <mnemonic> [--name]   # import 12/24-word seed
 wallet list                         # list all saved wallets
 wallet use <name>                   # switch active wallet
 wallet show [--name <label>]        # show addresses for all chains from seed
 wallet remove <name>                # remove a wallet
+wallet link <target-address>        # placeholder; implement when API endpoint exists
 ```
+
+### Migration from Legacy Config
+If you have an existing config with `privateKey`, run `whales wallet import "<your-mnemonic>" --name default` to migrate. Mnemonic cannot be recovered from a private key.
 
 ---
 
@@ -126,7 +130,8 @@ whales portfolio balance [--chain evm|solana|sui|aptos]
 
 ## 4. Implementation Order
 
-1. **Refactor wallet**: migrate privateKey → mnemonic, add multi-wallet support
+0. **Migration**: Users with legacy `privateKey` config must run `wallet import` with their mnemonic (cannot auto-migrate).
+1. **Refactor wallet**: migrate privateKey → mnemonic, add multi-wallet support (DONE)
 2. **`src/blockchain/evm/signer.ts`**: derive EVM wallet from mnemonic
 3. **`src/blockchain/solana/signer.ts`**: derive Solana keypair from mnemonic
 4. **`wallet show`**: display addresses across all chains

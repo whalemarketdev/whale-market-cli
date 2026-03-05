@@ -1,8 +1,14 @@
 import Conf from 'conf';
 
+export interface WalletEntry {
+  name: string;
+  mnemonic: string;
+  createdAt: string;
+}
+
 interface ConfigSchema {
-  privateKey?: string;
-  walletType?: 'solana' | 'evm';
+  wallets?: WalletEntry[];
+  activeWallet?: string;
   chainId?: number;
   apiUrl?: string;
   jwtToken?: string;
@@ -18,26 +24,26 @@ export class Config {
       defaults: {
         apiUrl: 'https://api.whales.market',
         chainId: 666666,
-        walletType: 'solana'
+        wallets: [],
+        activeWallet: undefined
       }
     });
   }
   
   // Get config with priority: CLI flag > env var > config file
-  get(key: keyof ConfigSchema, cliValue?: string): string | number | undefined {
-    if (cliValue) return cliValue;
+  get(key: keyof ConfigSchema, cliValue?: string): ConfigSchema[keyof ConfigSchema] {
+    if (cliValue) return cliValue as ConfigSchema[keyof ConfigSchema];
     
     const envKey = `WHALES_${key.toUpperCase().replace(/([A-Z])/g, '_$1')}`;
     const envValue = process.env[envKey];
     if (envValue) {
-      // Try to parse as number if it's a number field
       if (key === 'chainId') {
-        return parseInt(envValue, 10);
+        return parseInt(envValue, 10) as ConfigSchema[keyof ConfigSchema];
       }
-      return envValue;
+      return envValue as ConfigSchema[keyof ConfigSchema];
     }
     
-    return this.store.get(key);
+    return this.store.get(key) as ConfigSchema[keyof ConfigSchema];
   }
   
   set(key: keyof ConfigSchema, value: any): void {
@@ -54,6 +60,49 @@ export class Config {
   
   clear(): void {
     this.store.clear();
+  }
+
+  getWallets(): WalletEntry[] {
+    return this.store.get('wallets') ?? [];
+  }
+
+  getActiveWallet(): WalletEntry | undefined {
+    const name = this.store.get('activeWallet');
+    if (!name) return undefined;
+    return this.getWallets().find(w => w.name === name);
+  }
+
+  addWallet(entry: WalletEntry): void {
+    const wallets = this.getWallets();
+    if (wallets.some(w => w.name === entry.name)) {
+      throw new Error(`Wallet "${entry.name}" already exists`);
+    }
+    this.store.set('wallets', [...wallets, entry]);
+  }
+
+  removeWallet(name: string): void {
+    const wallets = this.getWallets().filter(w => w.name !== name);
+    this.store.set('wallets', wallets);
+    if (this.store.get('activeWallet') === name) {
+      if (wallets.length > 0) {
+        this.store.set('activeWallet', wallets[0].name);
+      } else {
+        this.store.delete('activeWallet');
+      }
+    }
+  }
+
+  setActiveWallet(name: string): void {
+    const wallets = this.getWallets();
+    if (!wallets.some(w => w.name === name)) {
+      throw new Error(`Wallet "${name}" not found`);
+    }
+    this.store.set('activeWallet', name);
+  }
+
+  hasLegacyPrivateKey(): boolean {
+    const store = this.store.store as Record<string, unknown>;
+    return typeof store.privateKey === 'string' && store.privateKey.length > 0;
   }
 }
 

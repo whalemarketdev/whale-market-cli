@@ -23,26 +23,28 @@ export const statusCommand = new Command('status')
       }
       
       // Check wallet config
-      const walletType = config.get('walletType') as string;
+      const activeWallet = config.get('activeWallet') as string | undefined;
       const apiUrl = config.get('apiUrl') as string;
-      
+      const chainId = config.get('chainId') as number | undefined;
+
       let address = 'Not configured';
       try {
         address = auth.getAddress();
       } catch (error) {
         // Wallet not configured
       }
-      
+
       if (globalOpts.format === 'json') {
         console.log(JSON.stringify({
           api: { connected: true, url: apiUrl },
-          wallet: { configured: address !== 'Not configured', address, type: walletType }
+          wallet: { configured: address !== 'Not configured', address, activeWallet, chainId }
         }, null, 2));
       } else {
         console.log(chalk.cyan('\nStatus:'));
         console.log(chalk.white(`  API URL: ${apiUrl}`));
-        console.log(chalk.white(`  Wallet Type: ${walletType || 'Not configured'}`));
-        console.log(chalk.white(`  Wallet Address: ${address}\n`));
+        console.log(chalk.white(`  Active Wallet: ${activeWallet || 'Not configured'}`));
+        console.log(chalk.white(`  Chain ID: ${chainId ?? 'Not configured'}`));
+        console.log(chalk.white(`  Address: ${address}\n`));
       }
     } catch (error: any) {
       spinner.stop();
