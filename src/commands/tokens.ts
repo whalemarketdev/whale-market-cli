@@ -2,7 +2,8 @@ import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { apiClient } from '../api';
-import { handleOutput, handleError, printTokensTable, printTokensTableDetailed, printDetailTable } from '../output';
+import { handleOutput, handleError, printTokensTable, printTokensTableDetailed, printDetailTable, formatPrice } from '../output';
+import { getExTokensForChain, formatExTokensForDisplay } from '../blockchain/evm/ex-tokens';
 
 export const tokensCommand = new Command('tokens')
   .description('Token operations');
@@ -94,37 +95,108 @@ tokensCommand
     }
   });
 
-// Get token by ID
+// Get token by ID (UUID) or symbol
 tokensCommand
   .command('get <token-id>')
-  .description('Get token details')
+  .description('Get token details by UUID or symbol')
   .action(async (tokenId, options, command) => {
     const globalOpts = command.optsWithGlobals();
     const spinner = ora('Fetching token...').start();
-    
+
     try {
-      const response = await apiClient.getToken(tokenId);
+      let token: any = null;
+
+      // 1. Try detail endpoint (works when server supports UUID)
+      try {
+        const response = await apiClient.getToken(tokenId);
+        token = response.data || response;
+      } catch {
+        // 2. Fallback: get from list with ids filter (works on dev API)
+        const res: any = await apiClient.getTokensV2({
+          ids: tokenId,
+          type: 'pre_market',
+          category: 'pre_market',
+          statuses: ['active', 'settling', 'ended'],
+          take: 1,
+          page: 1
+        });
+        const list = res.data?.list || res.data || [];
+        if (list.length > 0) {
+          token = list[0];
+        }
+      }
+
+      if (!token) {
+        spinner.stop();
+        throw new Error('Token not found');
+      }
+
       spinner.stop();
-      
-      const token = response.data || response;
-      
+
       if (globalOpts.format === 'json') {
         handleOutput(token, globalOpts.output, () => {});
       } else {
-        printDetailTable([
+        const priceVal = token.price && parseFloat(token.price.toString()) > 0 ? token.price : token.last_price;
+        const chainId = token.chain_id ?? token.network?.chain_id;
+        const chainIdNum = chainId != null ? parseInt(String(chainId), 10) : undefined;
+        const addr = token.address || token.pre_token_address || token.tge_token_address || token.tge_oft_address || '-';
+        const preAddr = token.pre_token_address || '-';
+        const tgeAddr = token.tge_token_address || token.tge_oft_address || '-';
+        // Prefer accepted_tokens from API if available, else use static list
+        const apiAccepted = token.accepted_tokens as Array<{ symbol?: string; address?: string }> | undefined;
+        let exTokensDisplay: string;
+        if (apiAccepted?.length) {
+          exTokensDisplay = apiAccepted.map((t) => `${t.symbol || '?'}: ${t.address || '-'}`).join('\n           ');
+        } else {
+          exTokensDisplay = chainIdNum != null ? formatExTokensForDisplay(chainIdNum) : '-';
+        }
+
+        const detailRows: [string, string][] = [
           ['ID', token.id || '-'],
           ['Name', token.name || '-'],
           ['Symbol', token.symbol || '-'],
           ['Status', token.status || '-'],
-          ['Price', token.price ? `$${token.price}` : '-'],
-          ['Chain ID', token.chain_id || '-'],
-          ['Description', token.description || '-']
-        ]);
+          ['Price', formatPrice(priceVal)],
+          ['Chain ID', String(chainId ?? '-')],
+          ['Token ID', token.token_id || '-'],
+          ['Address', addr],
+          ['Pre Token Address', preAddr],
+          ['TGE Token Address', tgeAddr],
+          ['Accepted ex-tokens (--ex-token)', exTokensDisplay],
+          ['Description', token.description || token.token_info?.description || '-']
+        ];
+        printDetailTable(detailRows);
       }
     } catch (error: any) {
       spinner.stop();
       handleError(error, globalOpts.format);
     }
+  });
+
+// List accepted ex-tokens (collateral) for a chain - for trade create-offer --ex-token
+tokensCommand
+  .command('ex-tokens')
+  .description('List accepted ex-tokens (collateral) for a chain - use with --chain-id')
+  .action(async (options, command) => {
+    const globalOpts = command.optsWithGlobals();
+    const chainId = parseInt(String(globalOpts.chainId ?? 97), 10);
+    const tokens = getExTokensForChain(chainId);
+
+    if (globalOpts.format === 'json') {
+      console.log(JSON.stringify({ chainId, tokens }, null, 2));
+      return;
+    }
+
+    if (tokens.length === 0) {
+      console.log(`No ex-tokens for chain ${chainId}. Use --chain-id to specify chain.`);
+      return;
+    }
+
+    console.log(chalk.cyan(`\nAccepted ex-tokens for chain ${chainId} (use with --ex-token):\n`));
+    printDetailTable(
+      tokens.map((t) => [t.symbol, `${t.address} (${t.decimals} decimals)`])
+    );
+    console.log(chalk.gray('\nExample: whale trade create-offer --token <token_id> --side buy --price 0.5 --amount 1000 --ex-token <address above> --chain-id ' + chainId + '\n'));
   });
 
 // Search tokens (uses V2 API)

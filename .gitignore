@@ -31,3 +31,6 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Local env (use .whales-cli.env.example as template)
+.whales-cli.env

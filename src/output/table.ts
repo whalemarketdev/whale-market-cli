@@ -249,14 +249,17 @@ export function printOffersTable(offers: any[]): void {
   });
   
   offers.forEach((offer: any) => {
+    // API may return: offer_by_user.address, offerByUser.address, offer_by_user__address, or address
+    const addr = offer.address ?? offer.offer_by_user?.address ?? (offer as any).offerByUser?.address;
+    const address = addr ?? (offer as any).offer_by_user__address ?? '-';
     table.push([
-      offer.id || '-',
-      offer.type || '-',
-      offer.token_id || '-',
-      offer.amount || '-',
-      formatPrice(offer.price),
+      offer.id ?? offer.offer_index ?? '-',
+      offer.type ?? offer.offer_type ?? '-',
+      offer.token_id ?? offer.token?.id ?? '-',
+      offer.amount ?? offer.total_amount ?? '-',
+      formatPrice(offer.price ?? offer.offer_price_usd),
       formatStatus(offer.status || 'unknown'),
-      truncate(offer.address || '-', 18)
+      truncate(address, 18)
     ]);
   });
   
