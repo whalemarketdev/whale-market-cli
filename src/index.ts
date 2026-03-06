@@ -18,6 +18,8 @@ import { walletCommand } from './commands/wallet';
 import { tokensCommand } from './commands/tokens';
 import { offersCommand } from './commands/offers';
 import { ordersCommand } from './commands/orders';
+import { tradeCommand } from './commands/trade';
+import { otcCommand } from './commands/otc';
 import { portfolioCommand } from './commands/portfolio';
 import { orderbookCommand } from './commands/orderbook';
 import { bookCommand } from './commands/book';
@@ -39,6 +41,7 @@ program
 // Global options
 program
   .option('-f, --format <format>', 'Output format (table|json|plain)', 'table')
+  .option('-y, --yes', 'Skip confirmation prompt for write operations')
   .option('-k, --private-key <key>', 'Private key (overrides config)')
   .option('--api-url <url>', 'API endpoint URL')
   .option('--chain-id <id>', 'Chain ID', '666666');
@@ -49,6 +52,8 @@ program.addCommand(walletCommand);
 program.addCommand(tokensCommand);
 program.addCommand(offersCommand);
 program.addCommand(ordersCommand);
+program.addCommand(tradeCommand);
+program.addCommand(otcCommand);
 program.addCommand(portfolioCommand);
 program.addCommand(orderbookCommand);
 program.addCommand(bookCommand);

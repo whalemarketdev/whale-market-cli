@@ -324,3 +324,23 @@ export function printNetworksTable(networks: any[]): void {
   
   console.log(table.toString());
 }
+
+/** Display transaction result (txHash) in a table. Optionally pass explorerUrl for link. */
+export function printTxResultTable(
+  txResult: { txHash: string; wait(): Promise<void> },
+  options?: { explorerUrl?: string; action?: string }
+): void {
+  const table = new Table({ colWidths: [18, 70] });
+  table.push(
+    [chalk.cyan('Transaction'), txResult.txHash],
+    [chalk.cyan('Status'), chalk.green('Submitted')]
+  );
+  if (options?.action) {
+    table.push([chalk.cyan('Action'), options.action]);
+  }
+  if (options?.explorerUrl) {
+    const link = `${options.explorerUrl}/tx/${txResult.txHash}`;
+    table.push([chalk.cyan('Explorer'), link]);
+  }
+  console.log(table.toString());
+}

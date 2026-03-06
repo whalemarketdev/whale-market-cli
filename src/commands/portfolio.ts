@@ -2,7 +2,9 @@ import { Command } from 'commander';
 import ora from 'ora';
 import { apiClient } from '../api';
 import { auth } from '../auth';
+import { config } from '../config';
 import { handleOutput, handleError, printDetailTable, printOrdersTable } from '../output';
+import { getChainAdapter } from './helpers/chain';
 
 export const portfolioCommand = new Command('portfolio')
   .description('Portfolio & positions');
@@ -84,25 +86,62 @@ portfolioCommand
     }
   });
 
-// Balance (placeholder - would need balance endpoint)
+// Balance (on-chain via ChainAdapter)
 portfolioCommand
   .command('balance')
-  .description('Show token balances')
-  .option('--token <symbol>', 'Filter by token symbol')
+  .description('Show on-chain token balances')
+  .option('--chain <evm|solana|sui|aptos>', 'Chain to query (default: from --chain-id)')
+  .option('--token <addr>', 'Token address/mint (omit for native balance)')
+  .option('--address <addr>', 'Wallet address (default: from active wallet)')
   .action(async (options, command) => {
     const globalOpts = command.optsWithGlobals();
-    
+    const spinner = ora('Fetching balance...').start();
+
     try {
+      const wallet = config.getActiveWallet();
+      if (!wallet?.mnemonic) {
+        throw new Error('No wallet configured. Run: whales setup or whales wallet import');
+      }
+
+      let chainId: number;
+      if (options.chain) {
+        const chainMap: Record<string, number> = {
+          evm: 1,
+          solana: 666666,
+          sui: 900000,
+          aptos: 900001,
+        };
+        chainId = chainMap[options.chain.toLowerCase()] ?? 666666;
+      } else {
+        chainId = typeof globalOpts.chainId === 'string'
+          ? parseInt(globalOpts.chainId, 10)
+          : (globalOpts.chainId ?? 666666);
+      }
+
+      const adapter = getChainAdapter(chainId);
+      const address = options.address || await adapter.getAddress(wallet.mnemonic);
+      const tokenAddress = options.token;
+
+      const balance = await adapter.getBalance(address, tokenAddress);
+      spinner.stop();
+
       if (globalOpts.format === 'json') {
         console.log(JSON.stringify({
-          message: 'Balance feature not yet implemented',
-          note: 'This would require blockchain RPC calls'
+          address,
+          chainId,
+          token: tokenAddress || 'native',
+          balance,
         }, null, 2));
       } else {
-        console.log('Balance feature not yet implemented');
-        console.log('This would require blockchain RPC calls to check token balances');
+        const tokenLabel = tokenAddress ? `Token (${tokenAddress.slice(0, 12)}…)` : 'Native';
+        printDetailTable([
+          ['Address', address],
+          ['Chain ID', String(chainId)],
+          [tokenLabel, balance],
+        ]);
       }
     } catch (error: any) {
+      spinner.stop();
       handleError(error, globalOpts.format);
     }
   });
