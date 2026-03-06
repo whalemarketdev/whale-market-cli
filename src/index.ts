@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './load-env'; // Load ~/.whales-cli.env (WHALES_API_URL, etc.) before config
 // Suppress punycode deprecation warning from transitive dependencies
 // This warning comes from @solana/web3.js -> node-fetch -> whatwg-url
 // The userland punycode package is installed, but Node.js still uses built-in module
@@ -14,6 +15,7 @@ process.on('warning', (warning) => {
 
 import { Command } from 'commander';
 import { setupCommand } from './commands/setup';
+import { configCommand } from './commands/config';
 import { walletCommand } from './commands/wallet';
 import { tokensCommand } from './commands/tokens';
 import { offersCommand } from './commands/offers';
@@ -48,6 +50,7 @@ program
 
 // Commands
 program.addCommand(setupCommand);
+program.addCommand(configCommand);
 program.addCommand(walletCommand);
 program.addCommand(tokensCommand);
 program.addCommand(offersCommand);

@@ -59,8 +59,12 @@ export class ApiClient {
     return this.get('/v2/tokens', params);
   }
   
+  /**
+   * Get token by ID (UUID).
+   * Uses V2 endpoint: GET /v2/tokens/detail/index/:id (compatible with dev & production)
+   */
   async getToken(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/tokens/${id}`);
+    return this.get(`/v2/tokens/detail/index/${id}`);
   }
   
   async getOffers(params?: any): Promise<ApiResponse<any[]>> {
