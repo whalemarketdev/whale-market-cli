@@ -34,6 +34,7 @@ import { SOLANA_RPC, PRE_MARKET, OTC_PRE_MARKET } from '../../blockchain/solana/
 import { SUI_RPC, MAINNET as SUI_MAINNET } from '../../blockchain/sui/constants';
 import { APTOS_RPC, MAINNET as APTOS_MAINNET } from '../../blockchain/aptos/constants';
 import type { ChainAdapter } from '../../blockchain/types';
+import { config } from '../../config';
 
 // Chain ID constants (aligned with config and API)
 export const SOLANA_MAINNET_CHAIN_ID = 666666;
@@ -77,33 +78,44 @@ export function isAptosChain(chainId: number): boolean {
   return getChainType(chainId) === 'aptos';
 }
 
+/**
+ * Resolve the RPC URL for a chain.
+ * Priority: user custom RPC (config store) > default constant.
+ */
+export function resolveRpc(chainId: number): string {
+  const custom = config.getCustomRpc(chainId);
+  if (custom) return custom;
+
+  if (chainId === SOLANA_DEVNET_CHAIN_ID) return SOLANA_RPC.DEVNET;
+  if (chainId === SOLANA_MAINNET_CHAIN_ID) return SOLANA_RPC.MAINNET;
+  if (chainId === SUI_TESTNET_CHAIN_ID) return SUI_RPC.TESTNET;
+  if (chainId === SUI_MAINNET_CHAIN_ID) return SUI_RPC.MAINNET;
+  if (chainId === APTOS_TESTNET_CHAIN_ID) return APTOS_RPC.TESTNET;
+  if (chainId === APTOS_MAINNET_CHAIN_ID) return APTOS_RPC.MAINNET;
+  return getEvmRpcUrl(chainId);
+}
+
 export function getChainAdapter(chainId: number): ChainAdapter {
   const type = getChainType(chainId);
+  const rpcUrl = resolveRpc(chainId);
 
   if (type === 'evm') {
-    const rpcUrl = getEvmRpcUrl(chainId);
     if (!rpcUrl) throw new Error(`No RPC URL configured for chain ${chainId}`);
     return new EvmAdapter(rpcUrl);
   }
 
   if (type === 'solana') {
-    const rpcUrl =
-      chainId === SOLANA_DEVNET_CHAIN_ID ? SOLANA_RPC.DEVNET : SOLANA_RPC.MAINNET;
     return new SolanaAdapter(rpcUrl);
   }
 
   if (type === 'sui') {
-    const rpcUrl =
-      chainId === SUI_TESTNET_CHAIN_ID ? SUI_RPC.TESTNET : SUI_RPC.MAINNET;
     return new SuiAdapter(rpcUrl);
   }
 
   if (type === 'aptos') {
-    const fullnode =
-      chainId === APTOS_TESTNET_CHAIN_ID ? APTOS_RPC.TESTNET : APTOS_RPC.MAINNET;
     const network =
       chainId === APTOS_TESTNET_CHAIN_ID ? Network.TESTNET : Network.MAINNET;
-    return new AptosAdapter(network, fullnode);
+    return new AptosAdapter(network, rpcUrl);
   }
 
   throw new Error(`Chain adapter not implemented for chain ${chainId}`);
@@ -127,8 +139,9 @@ export function getPreMarket(
   const type = getChainType(chainId);
   const trimmed = mnemonic.trim();
 
+  const rpcUrl = resolveRpc(chainId);
+
   if (type === 'evm') {
-    const rpcUrl = getEvmRpcUrl(chainId);
     const contractAddr = PRE_MARKET_ADDRESS[chainId];
     const fundDistributor = FUND_DISTRIBUTOR_ADDRESS[chainId] ?? '0x0000000000000000000000000000000000000000';
     if (!rpcUrl || !contractAddr) {
@@ -139,8 +152,6 @@ export function getPreMarket(
   }
 
   if (type === 'solana') {
-    const rpcUrl =
-      chainId === SOLANA_DEVNET_CHAIN_ID ? SOLANA_RPC.DEVNET : SOLANA_RPC.MAINNET;
     const connection = new Connection(rpcUrl, 'confirmed');
     const keypair = deriveSolanaKeypair(trimmed);
     const isMainnet = chainId === SOLANA_MAINNET_CHAIN_ID;
@@ -148,8 +159,6 @@ export function getPreMarket(
   }
 
   if (type === 'sui') {
-    const rpcUrl =
-      chainId === SUI_TESTNET_CHAIN_ID ? SUI_RPC.TESTNET : SUI_RPC.MAINNET;
     const keypair = deriveSuiKeypair(trimmed);
     return new SuiPreMarket(rpcUrl, keypair);
   }
@@ -158,9 +167,7 @@ export function getPreMarket(
     const account = deriveAptosAccount(trimmed);
     const network =
       chainId === APTOS_TESTNET_CHAIN_ID ? Network.TESTNET : Network.MAINNET;
-    const fullnode =
-      chainId === APTOS_TESTNET_CHAIN_ID ? APTOS_RPC.TESTNET : APTOS_RPC.MAINNET;
-    return new AptosPreMarket(account, network, fullnode);
+    return new AptosPreMarket(account, network, rpcUrl);
   }
 
   throw new Error(`Pre-market not implemented for chain ${chainId}`);
@@ -174,8 +181,9 @@ export function getOtcPreMarket(
   const type = getChainType(chainId);
   const trimmed = mnemonic.trim();
 
+  const rpcUrl = resolveRpc(chainId);
+
   if (type === 'evm') {
-    const rpcUrl = getEvmRpcUrl(chainId);
     const contractAddr = OTC_PRE_MARKET_ADDRESS[chainId];
     const preMarketAddr = PRE_MARKET_ADDRESS[chainId];
     const fundDistributor = FUND_DISTRIBUTOR_ADDRESS[chainId] ?? '0x0000000000000000000000000000000000000000';
@@ -194,8 +202,6 @@ export function getOtcPreMarket(
   }
 
   if (type === 'solana') {
-    const rpcUrl =
-      chainId === SOLANA_DEVNET_CHAIN_ID ? SOLANA_RPC.DEVNET : SOLANA_RPC.MAINNET;
     const connection = new Connection(rpcUrl, 'confirmed');
     const keypair = deriveSolanaKeypair(trimmed);
     const isMainnet = chainId === SOLANA_MAINNET_CHAIN_ID;
