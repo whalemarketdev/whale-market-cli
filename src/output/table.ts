@@ -244,9 +244,10 @@ export function printOffersTable(offers: any[]): void {
       chalk.cyan('Amount'),
       chalk.cyan('Price'),
       chalk.cyan('Status'),
-      chalk.cyan('Address')
+      chalk.cyan('Address'),
+      chalk.cyan('OTC Index')
     ],
-    colWidths: [6, 10, 8, 10, 12, 10, 10, 20]
+    colWidths: [6, 10, 8, 10, 12, 10, 10, 20, 10]
   });
   
   offers.forEach((offer: any) => {
@@ -254,6 +255,7 @@ export function printOffersTable(offers: any[]): void {
     const addr = offer.address ?? offer.offer_by_user?.address ?? (offer as any).offerByUser?.address;
     const address = addr ?? (offer as any).offer_by_user__address ?? '-';
     const idx = offer.offer_index ?? offer.offerIndex ?? '-';
+    const otcIndex = offer.exit_position_index ?? offer.exitPositionIndex ?? '-';
     table.push([
       idx,
       truncate(offer.id ?? '-', 10),
@@ -262,7 +264,8 @@ export function printOffersTable(offers: any[]): void {
       offer.amount ?? offer.total_amount ?? '-',
       formatPrice(offer.price ?? offer.offer_price_usd),
       formatStatus(offer.status || 'unknown'),
-      truncate(address, 18)
+      truncate(address, 18),
+      otcIndex
     ]);
   });
   
