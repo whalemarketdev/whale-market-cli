@@ -44,7 +44,7 @@ function getExplorerUrl(chainId: number): string | undefined {
 }
 
 export const tradeCommand = new Command('trade')
-  .description('Pre-market trading (create, fill, close offers; settle, cancel orders)');
+  .description('Pre-market trading (create, fill, close offers; settle, claim-collateral orders)');
 
 // ─── create-offer ────────────────────────────────────────────────────────────
 tradeCommand
@@ -405,20 +405,20 @@ tradeCommand
     }
   });
 
-// ─── cancel-order ─────────────────────────────────────────────────────────────
+// ─── claim-collateral ─────────────────────────────────────────────────────────
 tradeCommand
-  .command('cancel-order <order-id>')
-  .description('Cancel an unfilled order (buyer reclaims collateral)')
+  .command('claim-collateral <order-id>')
+  .description('Cancel an unfilled order and reclaim collateral (buyer only)')
   .option('--with-discount', 'Use discount API for referral-enabled chains')
   .option('--order-uuid <uuid>', 'Order UUID from API (required for --with-discount)')
   .action(async (orderIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
     const chainId = getChainIdFromOpts(command);
 
-    const ok = await confirmTx(`Cancel order ${orderIdArg}. Proceed?`, command);
+    const ok = await confirmTx(`Claim collateral for order ${orderIdArg}. Proceed?`, command);
     if (!ok) return;
 
-    const spinner = ora('Cancelling order...').start();
+    const spinner = ora('Claiming collateral...').start();
 
     try {
       const mnemonic = getMnemonic();
@@ -462,7 +462,7 @@ tradeCommand
       }
 
       spinner.stop();
-      printTxResultTable(tx, { explorerUrl: getExplorerUrl(chainId), action: 'cancel-order' });
+      printTxResultTable(tx, { explorerUrl: getExplorerUrl(chainId), action: 'claim-collateral' });
       await tx.wait();
       if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
     } catch (error: any) {
