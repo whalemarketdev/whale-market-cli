@@ -67,7 +67,7 @@ export class EvmPreMarket {
     return this.fundDistributor;
   }
 
-  private async getTokenDecimals(tokenAddress: string): Promise<number> {
+  async getTokenDecimals(tokenAddress: string): Promise<number> {
     if (tokenAddress === ETH_ADDRESS) return 18;
     const token = new Contract(tokenAddress, ERC20_ABI, this.provider);
     return Number(await token.decimals());

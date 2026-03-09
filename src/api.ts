@@ -166,6 +166,35 @@ export class ApiClient {
   async getReferralTransactions(address: string): Promise<ApiResponse<any[]>> {
     return this.get(`/referral/my-campaigns/${address}/transactions`);
   }
+
+  /**
+   * Get exToken prices for collateral USD check (#1).
+   * Endpoint: GET /network-chains/v2/price?chainId={chainId}&currency=usd
+   * Returns: [{ address: string, price: number }]
+   */
+  async getExTokenPrices(chainId: number): Promise<Array<{ address: string; price: number }>> {
+    const res = await this.get<any>('/network-chains/v2/price', { chainId, currency: 'usd' });
+    return (res as any)?.data ?? res ?? [];
+  }
+
+  /**
+   * Get Sui settle-with-discount signature from API (#13).
+   * Endpoint: POST /transactions/build-settle-discount-signature-sui
+   */
+  async buildSuiSettleDiscount(orderUUID: string): Promise<any> {
+    const res = await this.post<any>('/transactions/build-settle-discount-signature-sui', { orderId: orderUUID });
+    return (res as any)?.data?.settleDiscount ?? (res as any)?.data;
+  }
+
+  /**
+   * Get Sui cancel-with-discount signature from API (#14).
+   * Endpoint: POST /transactions/build-cancel-discount-signature-sui
+   * Returns: { order: { custom_index: string }, settleDiscount: { ... } }
+   */
+  async buildSuiCancelDiscount(orderUUID: string): Promise<{ order: { custom_index: string }; settleDiscount: any }> {
+    const res = await this.post<any>('/transactions/build-cancel-discount-signature-sui', { orderId: orderUUID });
+    return (res as any)?.data;
+  }
 }
 
 export const apiClient = new ApiClient();

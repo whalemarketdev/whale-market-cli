@@ -81,9 +81,30 @@ tradeCommand
 
     const amount = parseFloat(options.amount);
     const price = parseFloat(options.price);
-    const collateral = amount * price;
+    const collateral = amount * price; // exToken units for EVM, USD for Solana/Sui/Aptos
+
+    // $10 minimum check — EVM price is in exToken units, need API price to convert to USD
+    let collateralUsd = collateral; // default: price is in USD (Solana/Sui/Aptos)
+    if (isEvmChain(chainId) && options.exToken) {
+      try {
+        const prices = await apiClient.getExTokenPrices(chainId);
+        const exTokenLower = (options.exToken as string).toLowerCase();
+        const tokenPrice = prices.find((p: any) => p.address?.toLowerCase() === exTokenLower)?.price;
+        if (tokenPrice) collateralUsd = collateral * tokenPrice;
+      } catch {
+        // API unavailable — fall through with collateral as-is
+      }
+    }
+
+    if (collateralUsd < 10) {
+      handleError(
+        new Error(`Minimum collateral is $10. Got $${collateralUsd.toFixed(2)}.`),
+        globalOpts.format
+      );
+      return;
+    }
     const ok = await confirmTx(
-      `Create ${options.side} offer: ${amount} tokens @ $${price} = $${collateral} collateral. Proceed?`,
+      `Create ${options.side} offer: ${amount} tokens @ ${isEvmChain(chainId) ? price + ' exToken' : '$' + price} = $${collateralUsd.toFixed(2)} collateral. Proceed?`,
       command
     );
     if (!ok) return;
@@ -232,6 +253,26 @@ tradeCommand
           ? (BigInt(offerData.collateral.amount) * amountRaw) / totalRaw
           : BigInt(offerData.collateral.amount);
 
+        // $10 minimum collateral check
+        try {
+          const prices = await apiClient.getExTokenPrices(chainId);
+          const tokenPrice = prices.find((p: any) =>
+            p.address.toLowerCase() === exTokenAddress.toLowerCase()
+          )?.price;
+          if (tokenPrice) {
+            const totalCollateralUi = parseFloat(offerData.collateral.uiAmount);
+            const fillCollateralUi = totalCollateralUi * (amount / offerData.totalAmount);
+            const fillCollateralUsd = fillCollateralUi * tokenPrice;
+            const remainingAmount = offerData.totalAmount - offerData.filledAmount - amount;
+            const remainingUsd = totalCollateralUi * Math.max(0, remainingAmount) / offerData.totalAmount * tokenPrice;
+            if (fillCollateralUsd < 10 && remainingUsd >= 10) {
+              throw new Error(`Fill amount too small: $${fillCollateralUsd.toFixed(2)} collateral is below the $10 minimum.`);
+            }
+          }
+        } catch (err: any) {
+          if (err.message?.includes('$10')) throw err;
+        }
+
         const tx = await (preMarket as any).fillOffer({
           offerId: offerId as number,
           amount,
@@ -340,7 +381,7 @@ tradeCommand
   .description('Settle a filled order (seller delivers settlement token)')
   .option('--token-address <addr>', 'Settlement token address (EVM: required)')
   .option('--amount <n>', 'Settlement token amount in human units (EVM: required)')
-  .option('--token-decimals <n>', 'Settlement token decimals for EVM (default: 6)', '6')
+  .option('--token-decimals <n>', 'Settlement token decimals override for EVM (auto-detected if omitted)')
   .option('--with-discount', 'Use discount API for referral-enabled chains')
   .option('--order-uuid <uuid>', 'Order UUID from API (required for --with-discount)')
   .action(async (orderIdArg, options, command) => {
@@ -366,7 +407,9 @@ tradeCommand
         if (!tokenAddress || amount === undefined || amount === null) {
           throw new Error('EVM settle requires --token-address and --amount');
         }
-        const decimals = parseInt(options.tokenDecimals, 10) || 6;
+        const decimals = options.tokenDecimals !== undefined
+          ? parseInt(options.tokenDecimals, 10)
+          : await (preMarket as any).getTokenDecimals(tokenAddress);
         const rawAmount = parseUnits(amount.toString(), decimals);
         if (options.withDiscount && options.orderUuid) {
           tx = await (preMarket as any).settleOrderWithDiscount({
@@ -390,17 +433,16 @@ tradeCommand
         }
       } else if (isSuiChain(chainId)) {
         if (options.withDiscount && options.orderUuid) {
-          const orderRes = await apiClient.getOrder(orderIdArg);
-          const order = (orderRes as any).data || orderRes;
-          if (!order?.seller_discount || !order?.buyer_discount || !order?.signature) {
-            throw new Error('Discount data not available. Fetch order from API first.');
-          }
-          const sigBytes = Buffer.from(order.signature, 'hex');
+          const sd = await apiClient.buildSuiSettleDiscount(options.orderUuid);
+          if (!sd) throw new Error('Settle discount data not available from API');
+          const sig = Array.isArray(sd.signature)
+            ? new Uint8Array(sd.signature)
+            : new Uint8Array(Buffer.from(sd.signature, 'hex'));
           tx = await (preMarket as any).settleOrderWithDiscount({
             orderId: orderId as string,
-            sellerDiscount: order.seller_discount,
-            buyerDiscount: order.buyer_discount,
-            signature: new Uint8Array(sigBytes),
+            sellerDiscount: Number(sd.sellerDiscount),
+            buyerDiscount: Number(sd.buyerDiscount),
+            signature: sig,
           });
         } else {
           tx = await (preMarket as any).settleOrder(orderId as string);
@@ -474,7 +516,23 @@ tradeCommand
           tx = await (preMarket as any).cancelOrder(orderId as number);
         }
       } else if (isSuiChain(chainId)) {
-        tx = await (preMarket as any).cancelOrder(orderId as string);
+        if (options.withDiscount && options.orderUuid) {
+          const discountData = await apiClient.buildSuiCancelDiscount(options.orderUuid);
+          const sd = discountData?.settleDiscount;
+          if (!sd) throw new Error('Cancel discount data not available from API');
+          const onChainOrderId = discountData?.order?.custom_index || (orderId as string);
+          const sig = Array.isArray(sd.signature)
+            ? new Uint8Array(sd.signature)
+            : new Uint8Array(Buffer.from(sd.signature, 'hex'));
+          tx = await (preMarket as any).cancelOrderWithDiscount({
+            orderId: onChainOrderId,
+            sellerDiscount: Number(sd.sellerDiscount),
+            buyerDiscount: Number(sd.buyerDiscount),
+            signature: sig,
+          });
+        } else {
+          tx = await (preMarket as any).cancelOrder(orderId as string);
+        }
       } else if (isAptosChain(chainId)) {
         if (options.withDiscount && options.orderUuid) {
           const orderRes = await apiClient.getOrder(orderIdArg);

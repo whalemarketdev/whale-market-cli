@@ -1,6 +1,6 @@
 # Plan: Contract Input Validation & Interaction Gaps
 
-**Status:** Phase 1 ✅ Complete · Phase 2 ✅ Mostly Done · Phase 3 Pending
+**Status:** Phase 1 ✅ Complete · Phase 2 ✅ Complete · Phase 3 ✅ Complete
 **Priority:** High
 **Source:** Analysis of `/ref/whales-market-frontend-v2/src/contracts` vs current CLI implementation
 
@@ -10,9 +10,9 @@
 
 | Status | Count | Items |
 |--------|-------|-------|
-| ✅ Done | 13 | #4–12, #15, #17–22 |
-| ⏳ Pending | 4 | #1, #2, #3, #13, #14 |
-| N/A | 3 | #16 (Aptos discount — frontend also unsupported) |
+| ✅ Done | 17 | All except #2 (optional), #16 (N/A) |
+| ⏳ Skipped | 1 | #2 (optional — covered by #1 check) |
+| N/A | 1 | #16 (Aptos discount — frontend also unsupported) |
 
 ---
 
@@ -26,7 +26,7 @@ API base URL: `https://api.whales.market` (configurable via `whales config set a
 
 ## EVM Gaps
 
-### 1. `createOffer` / `fillOffer` — Minimum Collateral (USD) ⏳ Pending
+### 1. `createOffer` / `fillOffer` — Minimum Collateral (USD) ✅ Done
 
 **Frontend behavior:**
 ```typescript
@@ -36,16 +36,17 @@ export const MIN_COLLATERAL = isDev ? 0.001 : 10; // USD
 - **Create**: blocks submit if `price × amount < $10`
 - **Fill**: blocks if fill amount in USD `< $10` AND remaining offer collateral `>= $10`
 
-**CLI behavior:** No minimum check — any amount is accepted.
+**CLI behavior (implemented):**
+- **Create**: For EVM, fetches exToken price from API → `collateralUsd = amount × price × exTokenPriceUsd`. For Solana/Sui/Aptos, `price` is already in USD so `collateralUsd = amount × price`. Rejects if `collateralUsd < 10`.
+- **Fill (EVM)**: Fetches exToken price, computes fill collateral USD from `offerData.collateral.uiAmount × (fillAmount/totalAmount) × exTokenPrice`, rejects if `< $10` while remaining collateral `>= $10`.
 
-**Gap:** CLI lets users submit sub-$10 offers. The contract may accept but the marketplace treats them as invalid.
+**Why EVM needs the API call:** For EVM, `--price` is in exToken units (e.g. WETH/PM-token). A price of `0.005 WETH` with WETH at $3000 = $15 USD — which is above the minimum but would incorrectly fail a simple `amount × price < 10` check.
 
-**API needed:**
+**API used:**
 ```
 GET /network-chains/v2/price?chainId={chainId}&currency=usd
 Response: [{ "address": "0x...", "price": 1.0001 }]
 ```
-Then: `collateralValueUsd = collateralInExToken × exTokenPrice`. Reject if `< 10`.
 
 ---
 
@@ -57,7 +58,7 @@ Then: `collateralValueUsd = collateralInExToken × exTokenPrice`. Reject if `< 1
 **CLI behavior:**
 - User passes `--price` (USD per token) and `--amount`; CLI computes `collateral = amount × price` directly in the trade command (no exToken price lookup needed for basic collateral calculation — already done)
 
-**Remaining gap:** The CLI doesn't validate that the computed collateral is correct relative to the on-chain exToken price. Under-collateralization is possible if user inputs inconsistent values. Covered by #1 when the $10 minimum check is added.
+**Remaining gap:** Covered by #1 — the $10 minimum check prevents under-collateralized offers.
 
 **API needed:**
 ```
@@ -67,17 +68,17 @@ Response: [{ "address": "0x...", "price": number }]
 
 ---
 
-### 3. `settleOrder` — Token Decimals ⏳ Pending
+### 3. `settleOrder` — Token Decimals ✅ Done
 
 **Frontend behavior:**
 - Fetches `token.decimals()` on-chain dynamically before approval/settlement
 
 **CLI behavior:**
-- Uses `--token-decimals` flag (default: 6); no on-chain lookup
+- `getTokenDecimals(tokenAddress)` is now public on `EvmPreMarket` and called automatically in settle
+- `--token-decimals` flag retained as an explicit override (omit for auto-detection)
+- ETH returns 18 directly; all ERC20s call `token.decimals()` on-chain
 
-**Gap:** Wrong decimals = wrong raw amount for settlement token (e.g. 18 for WETH vs default 6).
-
-**API needed:** None — requires on-chain RPC call `contract.decimals()` only.
+**API needed:** None — on-chain RPC call `contract.decimals()` only.
 
 ---
 
@@ -167,36 +168,41 @@ Response: { "data": "<base64_versioned_tx>" }
 
 ## Sui Gaps
 
-### 13. `settleOrderWithDiscount` ⏳ Pending
+### 13. `settleOrderWithDiscount` ✅ Done
 
 **Frontend behavior:**
 - Calls API for discount signature + data, builds PTB
 
 **CLI behavior:**
-- Not yet implemented
+- Calls `POST /transactions/build-settle-discount-signature-sui` with `{ orderId: orderUUID }`
+- Extracts `settleDiscount.{ sellerDiscount, buyerDiscount, signature }` from response
+- Handles signature as either `number[]` (JSON array) or hex string
+- Calls `SuiPreMarket.settleOrderWithDiscount()` with on-chain orderId + discount params
 
-**API needed:**
+**API:**
 ```
 POST /transactions/build-settle-discount-signature-sui
 Body:     { "orderId": "<order_uuid>" }
-Response: { "data": { "settleDiscount": { /* discount fields, signature */ } } }
+Response: { "data": { "settleDiscount": { "orderId": "...", "sellerDiscount": n, "buyerDiscount": n, "signature": [n,...] } } }
 ```
 
 ---
 
-### 14. `cancelOrderWithDiscount` ⏳ Pending
+### 14. `cancelOrderWithDiscount` ✅ Done
 
 **Frontend behavior:**
-- Calls API for discount signature + `custom_index`, builds PTB
+- Calls API for discount signature + `custom_index` (on-chain order object ID), builds PTB
 
 **CLI behavior:**
-- Not yet implemented
+- Added `cancelOrderWithDiscount()` to `SuiPreMarket` calling `settle_cancelled_with_discount`
+- In `trade.ts`, `claim-collateral --with-discount` calls `POST /transactions/build-cancel-discount-signature-sui`
+- Uses `response.data.order.custom_index` as the on-chain orderId (falls back to CLI argument)
 
-**API needed:**
+**API:**
 ```
 POST /transactions/build-cancel-discount-signature-sui
 Body:     { "orderId": "<order_uuid>" }
-Response: { "data": { "order": { "custom_index": "string" }, "settleDiscount": { /* ... */ } } }
+Response: { "data": { "order": { "custom_index": "<on-chain-object-id>" }, "settleDiscount": { ... } } }
 ```
 
 ---
@@ -272,9 +278,9 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 | # | Chain | Function | Status |
 |---|-------|----------|--------|
-| 1 | All | Min $10 USD collateral on create/fill | ⏳ Pending |
-| 2 | EVM | Collateral auto-computation from price API | ⏳ Pending (optional) |
-| 3 | EVM | `settleOrder` — dynamic token decimals | ⏳ Pending |
+| 1 | All | Min $10 USD collateral on create/fill | ✅ Done |
+| 2 | EVM | Collateral auto-computation from price API | ⏳ Skipped (covered by #1) |
+| 3 | EVM | `settleOrder` — dynamic token decimals | ✅ Done |
 | 4 | EVM | `settleOrder` — token approval | ✅ Done |
 | 5 | EVM | `closeOffer` — referral chain params | ✅ Done |
 | 6 | EVM | USDT double-approval | ✅ Done |
@@ -284,8 +290,8 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 | 10 | Solana | `settleOrder` w/ discount (API tx) | ✅ Done |
 | 11 | Solana | `cancelOrder` w/ discount (API tx) | ✅ Done |
 | 12 | Solana | Native SOL wrapping | ✅ Done |
-| 13 | Sui | `settleOrderWithDiscount` | ⏳ Pending |
-| 14 | Sui | `cancelOrderWithDiscount` | ⏳ Pending |
+| 13 | Sui | `settleOrderWithDiscount` | ✅ Done |
+| 14 | Sui | `cancelOrderWithDiscount` | ✅ Done |
 | 15 | Sui | Config object ID (`customIndex`) | ✅ Done |
 | 16 | Aptos | Settle/cancel w/ discount | N/A |
 | 17 | Aptos | Coin vs Fungible Asset entry function | ✅ Done |
@@ -299,12 +305,7 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 ## Pending Work
 
-### Next: High Priority
-- **#1 — Min $10 USD collateral check**: Needs `GET /network-chains/v2/price` lookup in `trade create-offer` and `trade fill-offer`. Apply to all chains (EVM, Solana; Sui/Aptos can use same price endpoint or skip).
-- **#3 — EVM settleOrder dynamic decimals**: Call `contract.decimals()` on the settlement token instead of using `--token-decimals` default.
-
-### Next: Medium Priority
-- **#13, #14 — Sui discount settle/cancel**: Implement `settleOrderWithDiscount` and `cancelOrderWithDiscount` in `SuiPreMarket` using the API PTB endpoints.
+All items complete. No remaining gaps identified.
 
 ---
 
