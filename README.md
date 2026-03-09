@@ -46,6 +46,22 @@ whales orders my
 
 ---
 
+## Shell Completion (Tab Autocomplete)
+
+Enable tab completion for commands and subcommands:
+
+```bash
+# Add to ~/.zshrc (zsh)
+eval "$(whales completion)"
+
+# Or for bash, add to ~/.bashrc
+eval "$(whales completion --shell bash)"
+```
+
+Then `source ~/.zshrc` (or `~/.bashrc`). After that, typing `whales ` + Tab suggests commands; `whales wallet ` + Tab suggests subcommands.
+
+---
+
 ## Global Options
 
 All commands accept these flags:

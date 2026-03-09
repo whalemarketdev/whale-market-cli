@@ -31,6 +31,7 @@ import { statusCommand } from './commands/status';
 import { shellCommand } from './commands/shell';
 import { upgradeCommand } from './commands/upgrade';
 import { helpCommand } from './commands/help';
+import { createCompletionCommand } from './commands/completion';
 
 const program = new Command();
 
@@ -66,6 +67,7 @@ program.addCommand(statusCommand);
 program.addCommand(shellCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(helpCommand);
+program.addCommand(createCompletionCommand());
 
 // Enhance default help output
 program.configureHelp({
