@@ -508,7 +508,7 @@ Response `data`: array of network objects:
 | 1. Build tx | POST | `/v2/settle-order/:orderId` |
 | 2. Submit | POST | `/rpc-transactions/send-transaction` |
 
-### orders cancel
+### orders claim-collateral
 
 | Step | Method | Endpoint |
 |------|--------|----------|
