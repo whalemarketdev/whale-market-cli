@@ -59,6 +59,28 @@ async function resolveOfferId(
   throw new Error(`Offer ${offerIdArg} not found or missing offer_index`);
 }
 
+async function resolveTokenId(
+  chainId: number,
+  tokenArg: string,
+  apiUrl?: string
+): Promise<string> {
+  if (!UUID_REGEX.test(tokenArg.trim())) return tokenArg;
+  const res: any = await apiClient.getTokensV2({
+    ids: tokenArg,
+    chain_id: chainId,
+    type: 'pre_market',
+    category: 'pre_market',
+    statuses: ['active', 'settling', 'ended'],
+    take: 1,
+    page: 1,
+  });
+  const list = res?.data?.list ?? res?.data ?? [];
+  const token = list[0];
+  const onChainId = token?.token_id;
+  if (onChainId != null && String(onChainId).length > 0) return String(onChainId);
+  throw new Error(`Token ${tokenArg} not found for chain ${chainId} or missing token_id`);
+}
+
 export const tradeCommand = new Command('trade')
   .description('Pre-market trading (create, fill, close offers; settle, claim-collateral orders)');
 
@@ -66,7 +88,7 @@ export const tradeCommand = new Command('trade')
 tradeCommand
   .command('create-offer')
   .description('Create a buy or sell offer')
-  .requiredOption('--token <id>', 'Token ID (numeric for EVM/Solana, or token config address for Sui/Aptos)')
+  .requiredOption('--token <id>', 'Token ID (numeric, bytes32 hex, or UUID for EVM/Solana; token config for Sui/Aptos)')
   .requiredOption('--side <side>', 'Offer side: buy | sell')
   .requiredOption('--price <n>', 'Price per token (USD, 6-decimal precision e.g. 0.5)')
   .requiredOption('--amount <n>', 'Token amount')
@@ -119,13 +141,14 @@ tradeCommand
       const isFullMatch = Boolean(options.fullMatch);
 
       if (isEvmChain(chainId)) {
+        const resolvedToken = await resolveTokenId(chainId, options.token, apiUrl);
         // EVM contract uses bytes32 for tokenId - accept hex string (0x...) or numeric
         const tokenId =
-          options.token.startsWith('0x') && options.token.length === 66
-            ? options.token
+          resolvedToken.startsWith('0x') && resolvedToken.length === 66
+            ? resolvedToken
             : (() => {
-                const n = parseInt(options.token, 10);
-                if (isNaN(n)) throw new Error('--token must be numeric or bytes32 hex (0x + 64 chars) for EVM');
+                const n = parseInt(resolvedToken, 10);
+                if (isNaN(n)) throw new Error('--token must be numeric, bytes32 hex (0x + 64 chars), or token UUID for EVM');
                 return n;
               })();
         const exTokenAddress = options.exToken;
@@ -145,8 +168,9 @@ tradeCommand
         await tx.wait();
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isSolanaChain(chainId)) {
-        const tokenId = parseInt(options.token, 10);
-        if (isNaN(tokenId)) throw new Error('--token must be numeric for Solana');
+        const resolvedToken = await resolveTokenId(chainId, options.token, apiUrl);
+        const tokenId = parseInt(resolvedToken, 10);
+        if (isNaN(tokenId)) throw new Error('--token must be numeric or token UUID for Solana');
         const exToken = new PublicKey(options.exToken);
         const rawPrice = Math.round(price * WEI6);
 
