@@ -68,7 +68,6 @@ tradeCommand
   .option('--full-match', 'Require full match only')
   .option('--token-config <addr>', 'Token config address (required for Sui/Aptos)')
   .option('--coin-type <type>', 'Coin type for Sui (e.g. 0x2::sui::SUI)')
-  .option('--ex-token-decimals <n>', 'Exchange token decimals (default: 6 for ERC20, 18 for ETH)', '6')
   .action(async (options, command) => {
     const globalOpts = command.optsWithGlobals();
 
@@ -140,7 +139,7 @@ tradeCommand
                 return n;
               })();
         const exTokenAddress = options.exToken;
-        const exDecimals = parseInt(options.exTokenDecimals, 10) || (exTokenAddress === ETH_ADDRESS ? 18 : 6);
+        const exDecimals = exTokenAddress === ETH_ADDRESS ? 18 : await pm.getTokenDecimals(exTokenAddress);
         const collateral = parseUnits((amount * price).toString(), exDecimals);
 
         const tx = await pm.createOffer({

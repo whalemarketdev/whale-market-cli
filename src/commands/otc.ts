@@ -21,7 +21,6 @@ import {
   getPreMarket,
   isEvmChain,
   isSolanaChain,
-  parseOrderId,
   SOLANA_MAINNET_CHAIN_ID,
   SOLANA_DEVNET_CHAIN_ID,
 } from './helpers/chain';

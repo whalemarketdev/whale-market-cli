@@ -286,6 +286,18 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 ---
 
+### 24. `trade create-offer` — EVM Ex-token Decimals On-chain Fetch ✅ Done
+
+**Before:** `--ex-token-decimals` option with default fallback to 6 for ERC20.
+
+**After:** Removed `--ex-token-decimals` option from `trade create-offer`. Decimals are fetched on-chain:
+- `ETH_ADDRESS` → 18 (no RPC call)
+- All other ERC20s → `pm.getTokenDecimals(exTokenAddress)` (calls `token.decimals()` on-chain)
+
+**API needed:** None — on-chain RPC only.
+
+---
+
 ## Summary Table
 
 | # | Chain | Function | Status |
@@ -313,6 +325,7 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 | 21 | OTC EVM | `fillOffer` referral discount encoding | ✅ Done |
 | 22 | OTC Solana | `fillOffer` PDA PublicKey format | ✅ Done |
 | 23 | OTC EVM+Solana | `createOffer` — ex-token decimals auto-fetch | ✅ Done |
+| 24 | EVM | `trade create-offer` — ex-token decimals on-chain fetch (no default 6) | ✅ Done |
 
 ---
 
