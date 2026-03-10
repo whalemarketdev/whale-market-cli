@@ -47,7 +47,7 @@ program
   .option('-y, --yes', 'Skip confirmation prompt for write operations')
   .option('-k, --private-key <key>', 'Private key (overrides config)')
   .option('--api-url <url>', 'API endpoint URL')
-  .option('--chain-id <id>', 'Chain ID', '666666');
+  .option('--chain-id <id>', 'Chain ID');
 
 // Commands
 program.addCommand(setupCommand);
