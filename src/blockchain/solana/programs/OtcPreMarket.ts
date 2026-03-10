@@ -1,6 +1,7 @@
 import * as anchor from '@coral-xyz/anchor';
 import { BN, Program } from '@coral-xyz/anchor';
 import {
+  ComputeBudgetProgram,
   Connection,
   Keypair,
   PublicKey,
@@ -12,6 +13,9 @@ import {
   NATIVE_MINT,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
+const MAX_RETRIES = 10;
+const RETRY_DELAY_MS = 1500;
+
 import { IDL as OtcIDL, OtcPreMarketType } from './idl/otc_pre_market';
 import { IDL as PreMarketIDL, PreMarketType } from './idl/pre_market';
 import { OTC_PRE_MARKET, PRE_MARKET } from '../constants';
@@ -107,11 +111,54 @@ export class SolanaOtcPreMarket {
     return this.preMarketConfigAccount!;
   }
 
-  private async sendTransaction(tx: Transaction): Promise<TxResult> {
-    const txHash = await sendAndConfirmTransaction(this.connection, tx, [this.keypair], {
-      commitment: 'confirmed',
-    });
-    return { txHash, wait: async () => {} };
+  /**
+   * Simulate the transaction to estimate compute units, add a CU budget instruction
+   * with a 25% buffer, then send with up to MAX_RETRIES retries on transient failures.
+   */
+  private async sendTransaction(tx: Transaction, extraSigners: Keypair[] = []): Promise<TxResult> {
+    const allSigners = [this.keypair, ...extraSigners];
+
+    // Step 1: Simulate to estimate CU
+    let cuLimit = 200_000;
+    try {
+      const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = this.keypair.publicKey;
+      const simResult = await this.connection.simulateTransaction(tx);
+      if (!simResult.value.err && simResult.value.unitsConsumed) {
+        cuLimit = Math.ceil(simResult.value.unitsConsumed * 1.25);
+      }
+    } catch {
+      // Fall back to default if simulation fails
+    }
+
+    // Step 2: Prepend CU budget instruction
+    tx.instructions.unshift(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit })
+    );
+
+    // Step 3: Send with retry
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = blockhash;
+        const txHash = await sendAndConfirmTransaction(
+          this.connection,
+          tx,
+          allSigners,
+          { commitment: 'confirmed' }
+        );
+        return { txHash, wait: async () => {} };
+      } catch (err: any) {
+        lastError = err;
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        }
+      }
+    }
+
+    throw lastError ?? new Error('Transaction failed after max retries');
   }
 
   /**
@@ -170,14 +217,7 @@ export class SolanaOtcPreMarket {
       .instruction();
 
     const tx = new Transaction().add(ix);
-    const txHash = await sendAndConfirmTransaction(
-      this.connection,
-      tx,
-      [this.keypair, otcOfferKeypair],
-      { commitment: 'confirmed' }
-    );
-
-    return { txHash, wait: async () => {} };
+    return this.sendTransaction(tx, [otcOfferKeypair]);
   }
 
   /**

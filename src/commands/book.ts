@@ -33,8 +33,9 @@ export const bookCommand = new Command('book')
       const depth = parseInt(options.depth);
       
       // Fetch offers from V2 API (same as whales.market frontend)
+      // Use symbol as-is: API may be case-sensitive (e.g. chalee_admin2)
       const params: any = {
-        symbol: symbol.toUpperCase(),
+        symbol: symbol.trim(),
         status: 'open',
         category_token: 'pre_market',
         order_type: 'normal',
@@ -46,7 +47,8 @@ export const bookCommand = new Command('book')
         params.chains = String(options.chainId);
       }
       
-      const response: any = await apiClient.getOffersV2(params);
+      const apiUrl = (globalOpts as any).apiUrl;
+      const response: any = await apiClient.getOffersV2(params, apiUrl);
       spinner.stop();
       
       // Handle different response structures
@@ -150,7 +152,8 @@ function parseOffer(offer: any): any {
   const matchType = offer.full_match === true ? 'Full' : 'Partial';
 
   return {
-    id: offer.id || offer.offer_index || '-',
+    id: offer.id ?? '-',
+    index: offer.offer_index ?? offer.offerIndex ?? '-',
     price,
     size: totalAmount,
     filled: filledAmount,
@@ -179,6 +182,8 @@ function printOrderBook(
     const sellTable = new Table({
       head: [
         chalk.cyan('#'),
+        chalk.cyan('ID'),
+        chalk.cyan('Index'),
         chalk.cyan('Price'),
         chalk.cyan('Size'),
         chalk.cyan('Filled'),
@@ -187,7 +192,7 @@ function printOrderBook(
         chalk.cyan('Fill'),
         chalk.cyan('Value')
       ],
-      colWidths: [5, 12, 12, 12, 12, 10, 10, 15],
+      colWidths: [4, 12, 8, 12, 10, 10, 10, 8, 8, 12],
       style: {
         head: [],
         border: []
@@ -197,6 +202,8 @@ function printOrderBook(
     sellOrders.forEach((order, index) => {
       sellTable.push([
         (index + 1).toString(),
+        String(order.id ?? '-'),
+        String(order.index ?? '-'),
         formatPrice(order.price),
         formatAmount(order.size),
         formatAmount(order.filled),
@@ -222,6 +229,8 @@ function printOrderBook(
     const buyTable = new Table({
       head: [
         chalk.cyan('#'),
+        chalk.cyan('ID'),
+        chalk.cyan('Index'),
         chalk.cyan('Price'),
         chalk.cyan('Size'),
         chalk.cyan('Filled'),
@@ -230,7 +239,7 @@ function printOrderBook(
         chalk.cyan('Fill'),
         chalk.cyan('Value')
       ],
-      colWidths: [5, 12, 12, 12, 12, 10, 10, 15],
+      colWidths: [4, 12, 8, 12, 10, 10, 10, 8, 8, 12],
       style: {
         head: [],
         border: []
@@ -240,6 +249,8 @@ function printOrderBook(
     buyOrders.forEach((order, index) => {
       buyTable.push([
         (index + 1).toString(),
+        String(order.id ?? '-'),
+        String(order.index ?? '-'),
         formatPrice(order.price),
         formatAmount(order.size),
         formatAmount(order.filled),

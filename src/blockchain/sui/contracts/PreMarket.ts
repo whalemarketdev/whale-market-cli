@@ -249,6 +249,35 @@ export class SuiPreMarket {
     return this.executeTransaction(tx);
   }
 
+  async cancelOrderWithDiscount(params: {
+    orderId: string;
+    sellerDiscount: number;
+    buyerDiscount: number;
+    signature: Uint8Array;
+  }): Promise<TxResult> {
+    const orderObj = await this.client.getObject({ id: params.orderId, options: { showContent: true } });
+    const orderFields = (orderObj.data?.content as any)?.fields;
+    const tokenConfigId: string = orderFields.token_id;
+    const coinType = extractPhantomType((orderObj.data?.content as any)?.type);
+
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${this.net.packageId}::${PRE_MARKET_MODULE}::settle_cancelled_with_discount`,
+      arguments: [
+        tx.object(this.net.configId),
+        tx.object(tokenConfigId),
+        tx.object(params.orderId),
+        tx.object(SUI_CLOCK_OBJECT_ID),
+        tx.pure.u64(params.sellerDiscount),
+        tx.pure.u64(params.buyerDiscount),
+        tx.pure.vector('u8', params.signature),
+      ],
+      typeArguments: [coinType],
+    });
+
+    return this.executeTransaction(tx);
+  }
+
   async cancelOrder(orderId: string): Promise<TxResult> {
     const orderObj = await this.client.getObject({ id: orderId, options: { showContent: true } });
     const orderFields = (orderObj.data?.content as any)?.fields;

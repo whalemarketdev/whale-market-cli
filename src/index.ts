@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './load-env'; // Load ~/.whales-cli.env (WHALES_API_URL, etc.) before config
 // Suppress punycode deprecation warning from transitive dependencies
 // This warning comes from @solana/web3.js -> node-fetch -> whatwg-url
 // The userland punycode package is installed, but Node.js still uses built-in module
@@ -14,10 +15,13 @@ process.on('warning', (warning) => {
 
 import { Command } from 'commander';
 import { setupCommand } from './commands/setup';
+import { configCommand } from './commands/config';
 import { walletCommand } from './commands/wallet';
 import { tokensCommand } from './commands/tokens';
 import { offersCommand } from './commands/offers';
 import { ordersCommand } from './commands/orders';
+import { tradeCommand } from './commands/trade';
+import { otcCommand } from './commands/otc';
 import { portfolioCommand } from './commands/portfolio';
 import { orderbookCommand } from './commands/orderbook';
 import { bookCommand } from './commands/book';
@@ -27,6 +31,7 @@ import { statusCommand } from './commands/status';
 import { shellCommand } from './commands/shell';
 import { upgradeCommand } from './commands/upgrade';
 import { helpCommand } from './commands/help';
+import { createCompletionCommand } from './commands/completion';
 
 const program = new Command();
 
@@ -39,16 +44,20 @@ program
 // Global options
 program
   .option('-f, --format <format>', 'Output format (table|json|plain)', 'table')
+  .option('-y, --yes', 'Skip confirmation prompt for write operations')
   .option('-k, --private-key <key>', 'Private key (overrides config)')
   .option('--api-url <url>', 'API endpoint URL')
   .option('--chain-id <id>', 'Chain ID', '666666');
 
 // Commands
 program.addCommand(setupCommand);
+program.addCommand(configCommand);
 program.addCommand(walletCommand);
 program.addCommand(tokensCommand);
 program.addCommand(offersCommand);
 program.addCommand(ordersCommand);
+program.addCommand(tradeCommand);
+program.addCommand(otcCommand);
 program.addCommand(portfolioCommand);
 program.addCommand(orderbookCommand);
 program.addCommand(bookCommand);
@@ -58,6 +67,7 @@ program.addCommand(statusCommand);
 program.addCommand(shellCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(helpCommand);
+program.addCommand(createCompletionCommand());
 
 // Enhance default help output
 program.configureHelp({

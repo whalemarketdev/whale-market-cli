@@ -24,9 +24,9 @@ function getMnemonic(): string {
 }
 
 export class Auth {
-  getWallet(mnemonicOverride?: string): { address: string; type: 'solana' | 'evm' } {
+  getWallet(mnemonicOverride?: string, chainIdOverride?: number): { address: string; type: 'solana' | 'evm' } {
     const mnemonic = mnemonicOverride ?? getMnemonic();
-    const chainId = getChainId();
+    const chainId = chainIdOverride ?? getChainId();
     const type = chainId === SOLANA_CHAIN_ID ? 'solana' : 'evm';
 
     if (type === 'solana') {
@@ -67,8 +67,8 @@ export class Auth {
     }
   }
 
-  getAddress(mnemonicOverride?: string): string {
-    return this.getWallet(mnemonicOverride).address;
+  getAddress(mnemonicOverride?: string, chainIdOverride?: number): string {
+    return this.getWallet(mnemonicOverride, chainIdOverride).address;
   }
 }
 

@@ -13,6 +13,7 @@ interface ConfigSchema {
   apiUrl?: string;
   jwtToken?: string;
   jwtExpiresAt?: string;
+  customRpcs?: Record<string, string>;
 }
 
 export class Config {
@@ -98,6 +99,26 @@ export class Config {
       throw new Error(`Wallet "${name}" not found`);
     }
     this.store.set('activeWallet', name);
+  }
+
+  getCustomRpcs(): Record<string, string> {
+    return this.store.get('customRpcs') ?? {};
+  }
+
+  getCustomRpc(chainId: number): string | undefined {
+    return this.getCustomRpcs()[chainId.toString()];
+  }
+
+  setCustomRpc(chainId: number, url: string): void {
+    const rpcs = this.getCustomRpcs();
+    rpcs[chainId.toString()] = url;
+    this.store.set('customRpcs', rpcs);
+  }
+
+  removeCustomRpc(chainId: number): void {
+    const rpcs = this.getCustomRpcs();
+    delete rpcs[chainId.toString()];
+    this.store.set('customRpcs', rpcs);
   }
 
   hasLegacyPrivateKey(): boolean {

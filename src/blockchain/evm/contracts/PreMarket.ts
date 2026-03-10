@@ -67,7 +67,7 @@ export class EvmPreMarket {
     return this.fundDistributor;
   }
 
-  private async getTokenDecimals(tokenAddress: string): Promise<number> {
+  async getTokenDecimals(tokenAddress: string): Promise<number> {
     if (tokenAddress === ETH_ADDRESS) return 18;
     const token = new Contract(tokenAddress, ERC20_ABI, this.provider);
     return Number(await token.decimals());
@@ -109,6 +109,7 @@ export class EvmPreMarket {
       },
       isFullMatch: raw.fullMatch ?? raw[1],
       status,
+      exTokenAddress,
     };
   }
 
@@ -129,7 +130,7 @@ export class EvmPreMarket {
   }
 
   async createOffer(params: {
-    tokenId: number;
+    tokenId: number | string;  // number for legacy, bytes32 hex string (e.g. 0x31363831...) for EVM
     side: 'buy' | 'sell';
     amount: number;      // token amount (human-readable, 6-decimal precision)
     collateral: bigint;  // pre-computed collateral amount in exToken raw units
@@ -142,12 +143,18 @@ export class EvmPreMarket {
     const offerType = params.side === 'buy' ? 1 : 2;
     const rawAmount = parseUnits(params.amount, TOKEN_DECIMALS);
 
+    // Contract expects bytes32 for tokenId - ensure proper format
+    const tokenIdBytes32 =
+      typeof params.tokenId === 'string' && params.tokenId.startsWith('0x')
+        ? params.tokenId
+        : ethers.zeroPadValue(ethers.toBeHex(params.tokenId, 32), 32);
+
     let tx: ethers.ContractTransactionResponse;
 
     if (params.exTokenAddress === ETH_ADDRESS) {
       tx = await this.contract.newOfferETH(
         offerType,
-        params.tokenId,
+        tokenIdBytes32,
         rawAmount,
         params.collateral,
         params.isFullMatch,
@@ -156,7 +163,7 @@ export class EvmPreMarket {
     } else {
       tx = await this.contract.newOffer(
         offerType,
-        params.tokenId,
+        tokenIdBytes32,
         rawAmount,
         params.collateral,
         params.exTokenAddress,

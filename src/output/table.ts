@@ -237,26 +237,35 @@ export function printTokensTableDetailed(tokens: any[]): void {
 export function printOffersTable(offers: any[]): void {
   const table = new Table({
     head: [
+      chalk.cyan('Index'),
       chalk.cyan('ID'),
       chalk.cyan('Type'),
       chalk.cyan('Token ID'),
       chalk.cyan('Amount'),
       chalk.cyan('Price'),
       chalk.cyan('Status'),
-      chalk.cyan('Address')
+      chalk.cyan('Address'),
+      chalk.cyan('OTC Index')
     ],
-    colWidths: [8, 8, 10, 15, 12, 10, 20]
+    colWidths: [6, 10, 8, 10, 12, 10, 10, 20, 10]
   });
   
   offers.forEach((offer: any) => {
+    // API may return: offer_by_user.address, offerByUser.address, offer_by_user__address, or address
+    const addr = offer.address ?? offer.offer_by_user?.address ?? (offer as any).offerByUser?.address;
+    const address = addr ?? (offer as any).offer_by_user__address ?? '-';
+    const idx = offer.offer_index ?? offer.offerIndex ?? '-';
+    const otcIndex = offer.exit_position_index ?? offer.exitPositionIndex ?? '-';
     table.push([
-      offer.id || '-',
-      offer.type || '-',
-      offer.token_id || '-',
-      offer.amount || '-',
-      formatPrice(offer.price),
+      idx,
+      truncate(offer.id ?? '-', 10),
+      offer.type ?? offer.offer_type ?? '-',
+      offer.token_id ?? offer.token?.id ?? '-',
+      offer.amount ?? offer.total_amount ?? '-',
+      formatPrice(offer.price ?? offer.offer_price_usd),
       formatStatus(offer.status || 'unknown'),
-      truncate(offer.address || '-', 18)
+      truncate(address, 18),
+      otcIndex
     ]);
   });
   
@@ -267,21 +276,26 @@ export function printOrdersTable(orders: any[]): void {
   const table = new Table({
     head: [
       chalk.cyan('ID'),
+      chalk.cyan('Order Index'),
       chalk.cyan('Offer ID'),
       chalk.cyan('Buyer'),
       chalk.cyan('Seller'),
       chalk.cyan('Amount'),
       chalk.cyan('Status')
     ],
-    colWidths: [8, 10, 20, 20, 15, 12]
+    colWidths: [8, 12, 10, 20, 20, 15, 12]
   });
   
   orders.forEach((order: any) => {
+    const buyerAddr = order.buyer_address ?? order.buyer?.address ?? '-';
+    const sellerAddr = order.seller_address ?? order.seller?.address ?? '-';
+    const orderIndex = order.order_index ?? order.orderIndex ?? '-';
     table.push([
       order.id || '-',
+      String(orderIndex),
       order.offer_id || '-',
-      truncate(order.buyer_address || '-', 18),
-      truncate(order.seller_address || '-', 18),
+      truncate(buyerAddr, 18),
+      truncate(sellerAddr, 18),
       order.amount || '-',
       formatStatus(order.status || 'unknown')
     ]);
@@ -322,5 +336,25 @@ export function printNetworksTable(networks: any[]): void {
     ]);
   });
   
+  console.log(table.toString());
+}
+
+/** Display transaction result (txHash) in a table. Optionally pass explorerUrl for link. */
+export function printTxResultTable(
+  txResult: { txHash: string; wait(): Promise<void> },
+  options?: { explorerUrl?: string; action?: string }
+): void {
+  const table = new Table({ colWidths: [18, 70] });
+  table.push(
+    [chalk.cyan('Transaction'), txResult.txHash],
+    [chalk.cyan('Status'), chalk.green('Submitted')]
+  );
+  if (options?.action) {
+    table.push([chalk.cyan('Action'), options.action]);
+  }
+  if (options?.explorerUrl) {
+    const link = `${options.explorerUrl}/tx/${txResult.txHash}`;
+    table.push([chalk.cyan('Explorer'), link]);
+  }
   console.log(table.toString());
 }

@@ -2,10 +2,12 @@ import * as anchor from '@coral-xyz/anchor';
 import { BN, Program } from '@coral-xyz/anchor';
 import {
   Connection,
+  ComputeBudgetProgram,
   Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
+  VersionedTransaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import {
@@ -17,10 +19,14 @@ import {
   getAccount,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
+import axios from 'axios';
 import { IDL, PreMarketType } from './idl/pre_market';
 import { PRE_MARKET, WEI6 } from '../constants';
 import { TxResult, OfferData, OrderData, OfferStatus, OrderStatus } from '../../types';
 import { buildWrapSolInstructions } from '../utils';
+
+const MAX_RETRIES = 10;
+const RETRY_DELAY_MS = 1500;
 
 // ── PDA helpers ────────────────────────────────────────────────────────────────
 
@@ -86,10 +92,17 @@ export class SolanaPreMarket {
   private keypair: Keypair;
   private configPubkey: PublicKey;
   private configAccount: anchor.IdlAccounts<PreMarketType>['configAccount'] | null = null;
+  private apiUrl: string;
 
-  constructor(connection: Connection, keypair: Keypair, isMainnet = true) {
+  constructor(
+    connection: Connection,
+    keypair: Keypair,
+    isMainnet = true,
+    apiUrl = 'https://api.whales.market'
+  ) {
     this.connection = connection;
     this.keypair = keypair;
+    this.apiUrl = apiUrl;
 
     const net = isMainnet ? PRE_MARKET.MAINNET : PRE_MARKET.DEVNET;
 
@@ -107,14 +120,54 @@ export class SolanaPreMarket {
     return this.configAccount!;
   }
 
+  /**
+   * Simulate the transaction to estimate compute units, add a CU budget instruction
+   * with a 25% buffer, then send with up to MAX_RETRIES retries on transient failures.
+   */
   private async send(tx: Transaction, extraSigners: Keypair[] = []): Promise<TxResult> {
-    const txHash = await sendAndConfirmTransaction(
-      this.connection,
-      tx,
-      [this.keypair, ...extraSigners],
-      { commitment: 'confirmed' }
+    const allSigners = [this.keypair, ...extraSigners];
+
+    // Step 1: Simulate to estimate CU
+    let cuLimit = 200_000;
+    try {
+      const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = this.keypair.publicKey;
+      const simResult = await this.connection.simulateTransaction(tx);
+      if (!simResult.value.err && simResult.value.unitsConsumed) {
+        cuLimit = Math.ceil(simResult.value.unitsConsumed * 1.25);
+      }
+    } catch {
+      // Fall back to default if simulation fails
+    }
+
+    // Step 2: Prepend CU budget instruction
+    tx.instructions.unshift(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: cuLimit })
     );
-    return { txHash, wait: async () => {} };
+
+    // Step 3: Send with retry
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = blockhash;
+        const txHash = await sendAndConfirmTransaction(
+          this.connection,
+          tx,
+          allSigners,
+          { commitment: 'confirmed' }
+        );
+        return { txHash, wait: async () => {} };
+      } catch (err: any) {
+        lastError = err;
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        }
+      }
+    }
+
+    throw lastError ?? new Error('Transaction failed after max retries');
   }
 
   async getOffer(offerId: number): Promise<OfferData> {
@@ -390,6 +443,23 @@ export class SolanaPreMarket {
     return this.send(finalTx);
   }
 
+  /**
+   * Settle a filled order with a referral discount.
+   * The backend builds and partially signs the transaction; we add our signature and send.
+   */
+  async settleOrderWithDiscount(params: { orderId: number }): Promise<TxResult> {
+    const { data } = await axios.post(
+      `${this.apiUrl}/transactions/build-transaction-settle-with-discount`,
+      { orderId: params.orderId, feePayer: this.keypair.publicKey.toBase58() }
+    );
+    const txBytes = Buffer.from(data.data as string, 'base64');
+    const versioned = VersionedTransaction.deserialize(txBytes);
+    versioned.sign([this.keypair]);
+    const txHash = await this.connection.sendRawTransaction(versioned.serialize());
+    await this.connection.confirmTransaction(txHash, 'confirmed');
+    return { txHash, wait: async () => {} };
+  }
+
   // cancelOrder is called by the BUYER to cancel an unfilled order and reclaim collateral.
   async cancelOrder(orderId: number): Promise<TxResult> {
     const config = await this.fetchConfig();
@@ -431,5 +501,22 @@ export class SolanaPreMarket {
       .instruction();
 
     return this.send(new Transaction().add(ix));
+  }
+
+  /**
+   * Cancel an unfilled order with a referral discount.
+   * The backend builds and partially signs the transaction; we add our signature and send.
+   */
+  async cancelOrderWithDiscount(params: { orderId: number }): Promise<TxResult> {
+    const { data } = await axios.post(
+      `${this.apiUrl}/transactions/build-transaction-cancel-with-discount`,
+      { orderId: params.orderId, feePayer: this.keypair.publicKey.toBase58() }
+    );
+    const txBytes = Buffer.from(data.data as string, 'base64');
+    const versioned = VersionedTransaction.deserialize(txBytes);
+    versioned.sign([this.keypair]);
+    const txHash = await this.connection.sendRawTransaction(versioned.serialize());
+    await this.connection.confirmTransaction(txHash, 'confirmed');
+    return { txHash, wait: async () => {} };
   }
 }

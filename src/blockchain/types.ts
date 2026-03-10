@@ -35,6 +35,8 @@ export interface OfferData {
   };
   isFullMatch: boolean;
   status: OfferStatus;
+  /** EVM: ex-token address from contract (for fill-offer when API unavailable) */
+  exTokenAddress?: string;
 }
 
 export interface OrderData {

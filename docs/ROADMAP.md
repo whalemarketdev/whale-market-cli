@@ -211,8 +211,8 @@ Admin / operator-only functions (`initialize`, `setRole`, `updateConfig`, etc.) 
 | `closeOffer` | ✅ | ✅ | ✅ | ✅ |
 | `settleOrder` | ✅ | ✅ | ✅ | ✅ |
 | `settleOrder` (with discount) | ✅ | — | ✅ | ✅ |
-| `cancelOrder` | ✅ | ✅ | ✅ | ✅ |
-| `cancelOrder` (with discount) | ✅ | — | — | ✅ |
+| `cancelOrder` (`claim-collateral`) | ✅ | ✅ | ✅ | ✅ |
+| `cancelOrder` with discount (`claim-collateral --with-discount`) | ✅ | — | — | ✅ |
 
 **Chain-specific notes:**
 - **EVM**: Referral-enabled chains use a `*Ref` ABI variant with `data` + `fundDistributor` args.
@@ -254,7 +254,7 @@ whales trade create-offer --token <id> --side buy|sell --price <n> --amount <n> 
 whales trade fill-offer <offer-id> [--amount <n>]
 whales trade close-offer <offer-id>
 whales trade settle <order-id>
-whales trade cancel-order <order-id>
+whales trade claim-collateral <order-id>
 
 # OTC resell
 whales otc create <order-id> --price <n> --deadline <unix-ts> --ex-token <addr>

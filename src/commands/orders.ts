@@ -31,7 +31,8 @@ ordersCommand
       const response = await apiClient.getOrders(params);
       spinner.stop();
       
-      const orders = response.data || [];
+      const d = response.data ?? response;
+      const orders = Array.isArray(d) ? d : ((d as any)?.list ?? []);
       
       handleOutput(
         orders,
@@ -49,16 +50,29 @@ ordersCommand
   .command('my')
   .description('List my orders')
   .option('--side <side>', 'Filter by side (buy|sell)')
+  .option('--symbol <symbol>', 'Filter by token symbol')
+  .option('--limit <n>', 'Limit results', '20')
+  .option('--page <n>', 'Page number', '1')
   .action(async (options, command) => {
     const globalOpts = command.optsWithGlobals();
     const spinner = ora('Fetching your orders...').start();
     
     try {
-      const address = auth.getAddress();
-      const response = await apiClient.getOrdersByAddress(address);
+      const chainId = typeof globalOpts.chainId === 'string' ? parseInt(globalOpts.chainId, 10) : (globalOpts.chainId ?? 666666);
+      const address = auth.getAddress(undefined, chainId);
+      const params: any = {
+        category_token: 'pre_market',
+        chain_id: String(chainId),
+        page: parseInt(options.page),
+        take: parseInt(options.limit),
+      };
+      if (options.symbol) params.symbol = options.symbol;
+      const apiUrlOverride = (globalOpts as any).apiUrl;
+      const response = await apiClient.getOrdersByAddressV2(address, params, apiUrlOverride);
       spinner.stop();
       
-      let orders = response.data || [];
+      const d = response.data ?? response;
+      let orders = Array.isArray(d) ? d : ((d as any)?.list ?? []);
       
       if (options.side) {
         // Filter by side if needed
@@ -98,6 +112,7 @@ ordersCommand
       } else {
         printDetailTable([
           ['ID', order.id || '-'],
+          ['Order Index', String(order.order_index ?? order.orderIndex ?? '-')],
           ['Offer ID', order.offer_id || '-'],
           ['Buyer', order.buyer_address || '-'],
           ['Seller', order.seller_address || '-'],
@@ -123,7 +138,8 @@ ordersCommand
       const response = await apiClient.getOrdersByOffer(address);
       spinner.stop();
       
-      const orders = response.data || [];
+      const d = response.data ?? response;
+      const orders = Array.isArray(d) ? d : ((d as any)?.list ?? []);
       
       handleOutput(
         orders,
