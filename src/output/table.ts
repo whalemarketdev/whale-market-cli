@@ -237,17 +237,17 @@ export function printTokensTableDetailed(tokens: any[]): void {
 export function printOffersTable(offers: any[]): void {
   const table = new Table({
     head: [
-      chalk.cyan('Index'),
       chalk.cyan('ID'),
+      chalk.cyan('Offer UUID'),
       chalk.cyan('Type'),
-      chalk.cyan('Token ID'),
+      chalk.cyan('Token UUID'),
       chalk.cyan('Amount'),
       chalk.cyan('Price'),
       chalk.cyan('Status'),
       chalk.cyan('Address'),
-      chalk.cyan('OTC Index')
+      chalk.cyan('OTC ID')
     ],
-    colWidths: [6, 38, 8, 10, 12, 10, 10, 20, 10]
+    colWidths: [6, 38, 8, 12, 12, 10, 8, 44, 8]
   });
   
   offers.forEach((offer: any) => {
@@ -258,13 +258,13 @@ export function printOffersTable(offers: any[]): void {
     const otcIndex = offer.exit_position_index ?? offer.exitPositionIndex ?? '-';
     table.push([
       idx,
-      truncate(offer.id ?? '-', 10),
+      offer.id,
       offer.type ?? offer.offer_type ?? '-',
       offer.token_id ?? offer.token?.id ?? '-',
       offer.amount ?? offer.total_amount ?? '-',
       formatPrice(offer.price ?? offer.offer_price_usd),
       formatStatus(offer.status || 'unknown'),
-      truncate(address, 18),
+      address,
       otcIndex
     ]);
   });
@@ -275,15 +275,15 @@ export function printOffersTable(offers: any[]): void {
 export function printOrdersTable(orders: any[]): void {
   const table = new Table({
     head: [
-      chalk.cyan('ID'),
-      chalk.cyan('Order Index'),
-      chalk.cyan('Offer ID'),
+      chalk.cyan('Order UUID'),
+      chalk.cyan('Order ID'),
+      chalk.cyan('Offer UUID'),
       chalk.cyan('Buyer'),
       chalk.cyan('Seller'),
       chalk.cyan('Amount'),
       chalk.cyan('Status')
     ],
-    colWidths: [38, 13, 10, 20, 20, 15, 12]
+    colWidths: [38, 10, 12, 20, 20, 15, 8]
   });
   
   orders.forEach((order: any) => {
