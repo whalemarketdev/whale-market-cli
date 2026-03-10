@@ -298,6 +298,20 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 ---
 
+### 25. `trade settle` — Settlement Token Auto-fetch from API ✅ Done
+
+**Before:** `--token-address` and `--amount` always required for EVM settle.
+
+**After:** When an order UUID is passed, `resolveOrder()` now also returns `tokenAddress` (`order.token.address`) and `tokenAmount` (`order.amount`) from `GET /v2/detail-order/:uuid`. These are used as defaults; `--token-address` / `--amount` still override them. When an on-chain ID is passed (no UUID), both flags are still required.
+
+**Fields from API (`/v2/detail-order/:uuid` response):**
+- `tokenAddress` ← `order.offer.token.address` (token is nested under `offer.token`, not top-level)
+- `tokenAmount` ← `order.amount` (human-readable token count)
+
+**API needed:** `GET /v2/detail-order/:uuid` (already called by `resolveOrder`).
+
+---
+
 ## Summary Table
 
 | # | Chain | Function | Status |
@@ -326,6 +340,7 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 | 22 | OTC Solana | `fillOffer` PDA PublicKey format | ✅ Done |
 | 23 | OTC EVM+Solana | `createOffer` — ex-token decimals auto-fetch | ✅ Done |
 | 24 | EVM | `trade create-offer` — ex-token decimals on-chain fetch (no default 6) | ✅ Done |
+| 25 | EVM | `trade settle` — token address + amount auto-fetched from API when UUID passed | ✅ Done |
 
 ---
 

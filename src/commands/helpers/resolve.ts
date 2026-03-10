@@ -65,18 +65,26 @@ export async function resolveOtcOffer(uuid: string): Promise<{
   return { chainId, exitPositionIndex: String(exitPositionIndex) };
 }
 
-/** Resolves chainId + on-chain order ID from GET /transactions/orders/{uuid} */
+/** Resolves chainId + on-chain order ID from GET /v2/detail-order/{uuid}.
+ *  Also returns tokenAddress (order.offer.token.address) and tokenAmount (order.amount)
+ *  for use by the settle command when auto-fetching settlement params.
+ */
 export async function resolveOrder(uuid: string): Promise<{
   chainId: number;
   orderIndex: string;
   customIndex: string | null;
+  tokenAddress?: string;
+  tokenAmount?: number;
 }> {
   const res = await apiClient.getOrder(uuid);
   const o = (res as any)?.data ?? res;
   const chainId = o?.chain_id ?? o?.network?.chain_id;
   const orderIndex = o?.order_index;
   const customIndex = o?.custom_index ?? null;
+  // Token address is nested under offer.token.address in /v2/detail-order response
+  const tokenAddress: string | undefined = o?.offer?.token?.address ?? undefined;
+  const tokenAmount: number | undefined = o?.amount != null ? Number(o.amount) : undefined;
   if (!chainId) throw new Error(`Order ${uuid}: missing chain_id in API response`);
   if (orderIndex == null) throw new Error(`Order ${uuid}: missing order_index in API response`);
-  return { chainId, orderIndex: String(orderIndex), customIndex };
+  return { chainId, orderIndex: String(orderIndex), customIndex, tokenAddress, tokenAmount };
 }

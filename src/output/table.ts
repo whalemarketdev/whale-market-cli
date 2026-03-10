@@ -306,7 +306,7 @@ export function printOrdersTable(orders: any[]): void {
 
 export function printDetailTable(rows: Array<[string, string]>): void {
   const table = new Table({
-    colWidths: [20, 50]
+    colWidths: [20, 68]
   });
   
   rows.forEach(([key, value]) => {

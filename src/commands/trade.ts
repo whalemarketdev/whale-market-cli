@@ -427,8 +427,8 @@ tradeCommand
 tradeCommand
   .command('settle <order-id>')
   .description('Settle a filled order (seller delivers settlement token)')
-  .option('--token-address <addr>', 'Settlement token address (EVM: required)')
-  .option('--amount <n>', 'Settlement token amount in human units (EVM: required)')
+  .option('--token-address <addr>', 'Settlement token address (EVM; auto-fetched from API when passing UUID)')
+  .option('--amount <n>', 'Settlement token amount in human units (EVM; auto-fetched from API when passing UUID)')
   .option('--token-decimals <n>', 'Settlement token decimals override for EVM (auto-detected if omitted)')
   .option('--with-discount', 'Use discount API for referral-enabled chains')
   .option('--order-uuid <uuid>', 'Order UUID from API (required for --with-discount)')
@@ -448,6 +448,8 @@ tradeCommand
       let orderOnChainId: string;
       let orderCustomIndex: string | null = null;
       let orderUUID: string | undefined = options.orderUuid;
+      let tokenAddressFromApi: string | undefined;
+      let tokenAmountFromApi: number | undefined;
 
       if (UUID_REGEX.test(orderIdArg.trim())) {
         const resolved = await resolveOrder(orderIdArg);
@@ -455,6 +457,8 @@ tradeCommand
         orderOnChainId = resolved.orderIndex;
         orderCustomIndex = resolved.customIndex;
         orderUUID = orderUUID ?? orderIdArg;
+        tokenAddressFromApi = resolved.tokenAddress;
+        tokenAmountFromApi = resolved.tokenAmount;
       } else {
         if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
         orderOnChainId = orderIdArg;
@@ -469,15 +473,15 @@ tradeCommand
       let tx: any;
       if (isEvmChain(chainId)) {
         const pm = preMarket as EvmPreMarket;
-        const tokenAddress = options.tokenAddress;
-        const amount = options.amount;
-        if (!tokenAddress || amount === undefined || amount === null) {
-          throw new Error('EVM settle requires --token-address and --amount');
+        const tokenAddress = options.tokenAddress ?? tokenAddressFromApi;
+        const amountNum = options.amount != null ? parseFloat(options.amount) : tokenAmountFromApi;
+        if (!tokenAddress || amountNum == null) {
+          throw new Error('EVM settle requires --token-address and --amount (or pass an order UUID to auto-fetch from API)');
         }
         const decimals = options.tokenDecimals !== undefined
           ? parseInt(options.tokenDecimals, 10)
           : await pm.getTokenDecimals(tokenAddress);
-        const rawAmount = parseUnits(amount.toString(), decimals);
+        const rawAmount = parseUnits(amountNum.toString(), decimals);
         if (options.withDiscount && orderUUID) {
           tx = await pm.settleOrderWithDiscount({
             orderId: orderId as number,
