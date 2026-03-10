@@ -4,6 +4,13 @@ import ora from 'ora';
 import { config } from '../config';
 import { confirmTx } from './helpers/confirm';
 import {
+  UUID_REGEX,
+  getOptionalChainIdFromOpts,
+  resolveOffer,
+  resolveOrder,
+  resolveToken,
+} from './helpers/resolve';
+import {
   getPreMarket,
   parseOfferId,
   parseOrderId,
@@ -29,10 +36,6 @@ function getMnemonic(): string {
   return wallet.mnemonic;
 }
 
-function getChainIdFromOpts(command: Command): number {
-  const chainId = command.optsWithGlobals().chainId;
-  return typeof chainId === 'string' ? parseInt(chainId, 10) : (chainId ?? 666666);
-}
 
 function getExplorerUrl(chainId: number): string | undefined {
   if (chainId in EVM_CHAINS) {
@@ -43,43 +46,6 @@ function getExplorerUrl(chainId: number): string | undefined {
   return undefined;
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function resolveOfferId(
-  chainId: number,
-  offerIdArg: string,
-  apiUrl?: string
-): Promise<string> {
-  if (!isEvmChain(chainId) && !isSolanaChain(chainId)) return offerIdArg;
-  if (!UUID_REGEX.test(offerIdArg.trim())) return offerIdArg;
-  const res = await apiClient.getOffer(offerIdArg, apiUrl);
-  const o = (res as any)?.data ?? res;
-  const idx = o?.offer_index ?? o?.offerIndex;
-  if (idx != null && !isNaN(Number(idx))) return String(idx);
-  throw new Error(`Offer ${offerIdArg} not found or missing offer_index`);
-}
-
-async function resolveTokenId(
-  chainId: number,
-  tokenArg: string,
-  apiUrl?: string
-): Promise<string> {
-  if (!UUID_REGEX.test(tokenArg.trim())) return tokenArg;
-  const res: any = await apiClient.getTokensV2({
-    ids: tokenArg,
-    chain_id: chainId,
-    type: 'pre_market',
-    category: 'pre_market',
-    statuses: ['active', 'settling', 'ended'],
-    take: 1,
-    page: 1,
-  });
-  const list = res?.data?.list ?? res?.data ?? [];
-  const token = list[0];
-  const onChainId = token?.token_id;
-  if (onChainId != null && String(onChainId).length > 0) return String(onChainId);
-  throw new Error(`Token ${tokenArg} not found for chain ${chainId} or missing token_id`);
-}
 
 export const tradeCommand = new Command('trade')
   .description('Pre-market trading (create, fill, close offers; settle, claim-collateral orders)');
@@ -99,10 +65,26 @@ tradeCommand
   .option('--ex-token-decimals <n>', 'Exchange token decimals (default: 6 for ERC20, 18 for ETH)', '6')
   .action(async (options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const amount = parseFloat(options.amount);
     const price = parseFloat(options.price);
+
+    // Resolve chainId + on-chain token ID from UUID (must happen before $10 check)
+    let chainId = getOptionalChainIdFromOpts(command);
+    let tokenOnChainId: string = options.token;
+    if (UUID_REGEX.test((options.token as string).trim())) {
+      try {
+        const resolved = await resolveToken(options.token);
+        chainId = chainId ?? resolved.chainId;
+        tokenOnChainId = resolved.tokenId;
+      } catch (err: any) {
+        handleError(err, globalOpts.format);
+        return;
+      }
+    } else {
+      chainId = chainId ?? 666666;
+    }
+
     const collateral = amount * price; // exToken units for EVM, USD for Solana/Sui/Aptos
 
     // $10 minimum check — EVM price is in exToken units, need API price to convert to USD
@@ -141,13 +123,12 @@ tradeCommand
       const isFullMatch = Boolean(options.fullMatch);
 
       if (isEvmChain(chainId)) {
-        const resolvedToken = await resolveTokenId(chainId, options.token, apiUrl);
         // EVM contract uses bytes32 for tokenId - accept hex string (0x...) or numeric
         const tokenId =
-          resolvedToken.startsWith('0x') && resolvedToken.length === 66
-            ? resolvedToken
+          tokenOnChainId.startsWith('0x') && tokenOnChainId.length === 66
+            ? tokenOnChainId
             : (() => {
-                const n = parseInt(resolvedToken, 10);
+                const n = parseInt(tokenOnChainId, 10);
                 if (isNaN(n)) throw new Error('--token must be numeric, bytes32 hex (0x + 64 chars), or token UUID for EVM');
                 return n;
               })();
@@ -168,8 +149,7 @@ tradeCommand
         await tx.wait();
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isSolanaChain(chainId)) {
-        const resolvedToken = await resolveTokenId(chainId, options.token, apiUrl);
-        const tokenId = parseInt(resolvedToken, 10);
+        const tokenId = parseInt(tokenOnChainId, 10);
         if (isNaN(tokenId)) throw new Error('--token must be numeric or token UUID for Solana');
         const exToken = new PublicKey(options.exToken);
         const rawPrice = Math.round(price * WEI6);
@@ -187,7 +167,7 @@ tradeCommand
         await tx.wait();
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isSuiChain(chainId)) {
-        const tokenConfig = options.tokenConfig || options.token;
+        const tokenConfig = options.tokenConfig || tokenOnChainId;
         if (!tokenConfig) throw new Error('--token-config is required for Sui');
         const coinType = options.coinType || '0x2::sui::SUI';
         const rawAmount = BigInt(Math.round(amount * WEI6));
@@ -206,7 +186,7 @@ tradeCommand
         await tx.wait();
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isAptosChain(chainId)) {
-        const tokenConfig = options.tokenConfig || options.token;
+        const tokenConfig = options.tokenConfig || tokenOnChainId;
         if (!tokenConfig) throw new Error('--token-config is required for Aptos');
         const rawValue = Math.round(amount * price * WEI6);
 
@@ -239,7 +219,6 @@ tradeCommand
   .option('--ex-token <addr>', 'Exchange token address (EVM: fetched from offer if omitted)')
   .action(async (offerIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const ok = await confirmTx(`Fill offer ${offerIdArg}. Proceed?`, command);
     if (!ok) return;
@@ -249,11 +228,26 @@ tradeCommand
     try {
       const mnemonic = getMnemonic();
       const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
-      const apiUrlOverride = (globalOpts as any).apiUrl;
-      const resolvedId = await resolveOfferId(chainId, offerIdArg, apiUrlOverride);
+
+      let chainId = getOptionalChainIdFromOpts(command);
+      let offerOnChainId: string;
+      let offerCustomIndex: string | null = null;
+
+      if (UUID_REGEX.test(offerIdArg.trim())) {
+        const resolved = await resolveOffer(offerIdArg);
+        chainId = chainId ?? resolved.chainId;
+        offerOnChainId = resolved.offerIndex;
+        offerCustomIndex = resolved.customIndex;
+      } else {
+        if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
+        offerOnChainId = offerIdArg;
+      }
+
       const preMarket = getPreMarket(chainId, mnemonic, apiUrl);
 
-      const offerId = parseOfferId(chainId, resolvedId);
+      const offerId = isSuiChain(chainId) || isAptosChain(chainId)
+        ? (offerCustomIndex ?? offerOnChainId)
+        : parseOfferId(chainId, offerOnChainId);
 
       if (isEvmChain(chainId)) {
         const offerData = await (preMarket as any).getOffer(offerId as number);
@@ -263,7 +257,7 @@ tradeCommand
         }
         if (!exTokenAddress) {
           try {
-            const apiOffer = await apiClient.getOffer(offerIdArg, apiUrlOverride);
+            const apiOffer = await apiClient.getOffer(offerIdArg);
             const o = (apiOffer as any).data || apiOffer;
             const exToken = o?.ex_token ?? o?.exchange_token_address ?? o?.exToken;
             exTokenAddress = typeof exToken === 'string' ? exToken : exToken?.address ?? exToken?.contract_address;
@@ -355,7 +349,6 @@ tradeCommand
 // ─── close-offer ──────────────────────────────────────────────────────────────
 const closeOfferAction = async (offerIdArg: string, _options: any, command: Command) => {
   const globalOpts = command.optsWithGlobals();
-  const chainId = getChainIdFromOpts(command);
 
   const ok = await confirmTx(`Close offer ${offerIdArg}. Proceed?`, command);
   if (!ok) return;
@@ -365,11 +358,26 @@ const closeOfferAction = async (offerIdArg: string, _options: any, command: Comm
   try {
     const mnemonic = getMnemonic();
     const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
-    const apiUrlOverride = (globalOpts as any).apiUrl;
-    const resolvedId = await resolveOfferId(chainId, offerIdArg, apiUrlOverride);
+
+    let chainId = getOptionalChainIdFromOpts(command);
+    let offerOnChainId: string;
+    let offerCustomIndex: string | null = null;
+
+    if (UUID_REGEX.test(offerIdArg.trim())) {
+      const resolved = await resolveOffer(offerIdArg);
+      chainId = chainId ?? resolved.chainId;
+      offerOnChainId = resolved.offerIndex;
+      offerCustomIndex = resolved.customIndex;
+    } else {
+      chainId = chainId ?? 666666;
+      offerOnChainId = offerIdArg;
+    }
+
     const preMarket = getPreMarket(chainId, mnemonic, apiUrl);
 
-    const offerId = parseOfferId(chainId, resolvedId);
+    const offerId = isSuiChain(chainId) || isAptosChain(chainId)
+      ? (offerCustomIndex ?? offerOnChainId)
+      : parseOfferId(chainId, offerOnChainId);
 
     let tx: any;
     if (isEvmChain(chainId)) {
@@ -410,7 +418,6 @@ tradeCommand
   .option('--order-uuid <uuid>', 'Order UUID from API (required for --with-discount)')
   .action(async (orderIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const ok = await confirmTx(`Settle order ${orderIdArg}. Proceed?`, command);
     if (!ok) return;
@@ -420,9 +427,28 @@ tradeCommand
     try {
       const mnemonic = getMnemonic();
       const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
+
+      let chainId = getOptionalChainIdFromOpts(command);
+      let orderOnChainId: string;
+      let orderCustomIndex: string | null = null;
+      let orderUUID: string | undefined = options.orderUuid;
+
+      if (UUID_REGEX.test(orderIdArg.trim())) {
+        const resolved = await resolveOrder(orderIdArg);
+        chainId = chainId ?? resolved.chainId;
+        orderOnChainId = resolved.orderIndex;
+        orderCustomIndex = resolved.customIndex;
+        orderUUID = orderUUID ?? orderIdArg;
+      } else {
+        if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
+        orderOnChainId = orderIdArg;
+      }
+
       const preMarket = getPreMarket(chainId, mnemonic, apiUrl);
 
-      const orderId = parseOrderId(chainId, orderIdArg);
+      const orderId = isSuiChain(chainId) || isAptosChain(chainId)
+        ? (orderCustomIndex ?? orderOnChainId)
+        : parseOrderId(chainId, orderOnChainId);
 
       let tx: any;
       if (isEvmChain(chainId)) {
@@ -435,10 +461,10 @@ tradeCommand
           ? parseInt(options.tokenDecimals, 10)
           : await (preMarket as any).getTokenDecimals(tokenAddress);
         const rawAmount = parseUnits(amount.toString(), decimals);
-        if (options.withDiscount && options.orderUuid) {
+        if (options.withDiscount && orderUUID) {
           tx = await (preMarket as any).settleOrderWithDiscount({
             orderId: orderId as number,
-            orderUUID: options.orderUuid,
+            orderUUID,
             tokenAddress,
             amount: rawAmount,
           });
@@ -456,8 +482,8 @@ tradeCommand
           tx = await (preMarket as any).settleOrder(orderId as number);
         }
       } else if (isSuiChain(chainId)) {
-        if (options.withDiscount && options.orderUuid) {
-          const sd = await apiClient.buildSuiSettleDiscount(options.orderUuid);
+        if (options.withDiscount && orderUUID) {
+          const sd = await apiClient.buildSuiSettleDiscount(orderUUID);
           if (!sd) throw new Error('Settle discount data not available from API');
           const sig = Array.isArray(sd.signature)
             ? new Uint8Array(sd.signature)
@@ -472,7 +498,7 @@ tradeCommand
           tx = await (preMarket as any).settleOrder(orderId as string);
         }
       } else if (isAptosChain(chainId)) {
-        if (options.withDiscount && options.orderUuid) {
+        if (options.withDiscount && orderUUID) {
           const orderRes = await apiClient.getOrder(orderIdArg);
           const order = (orderRes as any).data || orderRes;
           if (!order?.seller_discount || !order?.buyer_discount || !order?.signature) {
@@ -509,7 +535,6 @@ tradeCommand
   .option('--order-uuid <uuid>', 'Order UUID from API (required for --with-discount)')
   .action(async (orderIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const ok = await confirmTx(`Claim collateral for order ${orderIdArg}. Proceed?`, command);
     if (!ok) return;
@@ -519,16 +544,35 @@ tradeCommand
     try {
       const mnemonic = getMnemonic();
       const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
+
+      let chainId = getOptionalChainIdFromOpts(command);
+      let orderOnChainId: string;
+      let orderCustomIndex: string | null = null;
+      let orderUUID: string | undefined = options.orderUuid;
+
+      if (UUID_REGEX.test(orderIdArg.trim())) {
+        const resolved = await resolveOrder(orderIdArg);
+        chainId = chainId ?? resolved.chainId;
+        orderOnChainId = resolved.orderIndex;
+        orderCustomIndex = resolved.customIndex;
+        orderUUID = orderUUID ?? orderIdArg;
+      } else {
+        if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
+        orderOnChainId = orderIdArg;
+      }
+
       const preMarket = getPreMarket(chainId, mnemonic, apiUrl);
 
-      const orderId = parseOrderId(chainId, orderIdArg);
+      const orderId = isSuiChain(chainId) || isAptosChain(chainId)
+        ? (orderCustomIndex ?? orderOnChainId)
+        : parseOrderId(chainId, orderOnChainId);
 
       let tx: any;
       if (isEvmChain(chainId)) {
-        if (options.withDiscount && options.orderUuid) {
+        if (options.withDiscount && orderUUID) {
           tx = await (preMarket as any).cancelOrderWithDiscount({
             orderId: orderId as number,
-            orderUUID: options.orderUuid,
+            orderUUID,
           });
         } else {
           tx = await (preMarket as any).cancelOrder(orderId as number);
@@ -540,8 +584,8 @@ tradeCommand
           tx = await (preMarket as any).cancelOrder(orderId as number);
         }
       } else if (isSuiChain(chainId)) {
-        if (options.withDiscount && options.orderUuid) {
-          const discountData = await apiClient.buildSuiCancelDiscount(options.orderUuid);
+        if (options.withDiscount && orderUUID) {
+          const discountData = await apiClient.buildSuiCancelDiscount(orderUUID);
           const sd = discountData?.settleDiscount;
           if (!sd) throw new Error('Cancel discount data not available from API');
           const onChainOrderId = discountData?.order?.custom_index || (orderId as string);
@@ -558,7 +602,7 @@ tradeCommand
           tx = await (preMarket as any).cancelOrder(orderId as string);
         }
       } else if (isAptosChain(chainId)) {
-        if (options.withDiscount && options.orderUuid) {
+        if (options.withDiscount && orderUUID) {
           const orderRes = await apiClient.getOrder(orderIdArg);
           const order = (orderRes as any).data || orderRes;
           if (!order?.seller_discount || !order?.buyer_discount || !order?.signature) {

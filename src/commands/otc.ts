@@ -5,6 +5,12 @@ import ora from 'ora';
 import { config } from '../config';
 import { confirmTx } from './helpers/confirm';
 import {
+  UUID_REGEX,
+  getOptionalChainIdFromOpts,
+  resolveOtcOffer,
+  resolveOrder,
+} from './helpers/resolve';
+import {
   getOtcPreMarket,
   getPreMarket,
   isEvmChain,
@@ -25,10 +31,6 @@ function getMnemonic(): string {
   return wallet.mnemonic;
 }
 
-function getChainIdFromOpts(command: Command): number {
-  const chainId = command.optsWithGlobals().chainId;
-  return typeof chainId === 'string' ? parseInt(chainId, 10) : (chainId ?? 666666);
-}
 
 function getExplorerUrl(chainId: number): string | undefined {
   if (chainId in EVM_CHAINS) {
@@ -52,7 +54,6 @@ otcCommand
   .option('--ex-token-decimals <n>', 'Exchange token decimals for EVM (default: 6)', '6')
   .action(async (orderIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const ok = await confirmTx(
       `Create OTC offer for order ${orderIdArg} @ ${options.price} per token. Proceed?`,
@@ -65,16 +66,24 @@ otcCommand
     try {
       const mnemonic = getMnemonic();
       const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
+
+      let chainId = getOptionalChainIdFromOpts(command);
+      let orderOnChainId: string;
+
+      if (UUID_REGEX.test(orderIdArg.trim())) {
+        const resolved = await resolveOrder(orderIdArg);
+        chainId = chainId ?? resolved.chainId;
+        orderOnChainId = resolved.orderIndex;
+      } else {
+        if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
+        orderOnChainId = orderIdArg;
+      }
+
       const otc = getOtcPreMarket(chainId, mnemonic, apiUrl);
 
-      const orderId = parseOrderId(chainId, orderIdArg) as number;
+      const orderId = parseInt(orderOnChainId, 10);
+      if (isNaN(orderId)) throw new Error(`Invalid order ID: ${orderOnChainId}`);
       const pricePerToken = parseFloat(options.price);
-      const exToken = options.exToken?.trim() ?? '';
-      if (exToken.startsWith('0x') && (chainId === 666666 || chainId === 999999)) {
-        throw new Error(
-          'Ex-token 0x... is EVM format. Add --chain-id for your EVM chain (e.g. --chain-id 97 for BSC testnet, 1 for Ethereum, 8453 for Base).'
-        );
-      }
       const deadline = options.deadline
         ? parseInt(options.deadline, 10)
         : Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60; // default: 1 year
@@ -134,7 +143,6 @@ otcCommand
   .option('--offer-uuid <uuid>', 'OTC offer UUID from API (required for --with-discount)')
   .action(async (otcOfferIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const ok = await confirmTx(`Fill OTC offer ${otcOfferIdArg}. Proceed?`, command);
     if (!ok) return;
@@ -144,15 +152,30 @@ otcCommand
     try {
       const mnemonic = getMnemonic();
       const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
+
+      let chainId = getOptionalChainIdFromOpts(command);
+      let otcOnChainId: string;
+      let offerUUID: string | undefined = options.offerUuid;
+
+      if (UUID_REGEX.test(otcOfferIdArg.trim())) {
+        const resolved = await resolveOtcOffer(otcOfferIdArg);
+        chainId = chainId ?? resolved.chainId;
+        otcOnChainId = resolved.exitPositionIndex;
+        offerUUID = offerUUID ?? otcOfferIdArg;
+      } else {
+        if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
+        otcOnChainId = otcOfferIdArg;
+      }
+
       const otc = getOtcPreMarket(chainId, mnemonic, apiUrl);
 
       if (isEvmChain(chainId)) {
-        const offerId = otcOfferIdArg;
+        const offerId = otcOnChainId;
         let tx: any;
-        if (options.withDiscount && options.offerUuid) {
+        if (options.withDiscount && offerUUID) {
           tx = await (otc as any).fillOfferWithDiscount({
             offerId,
-            offerUUID: options.offerUuid,
+            offerUUID,
           });
         } else {
           tx = await (otc as any).fillOffer(offerId);
@@ -162,7 +185,7 @@ otcCommand
         await tx.wait();
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isSolanaChain(chainId)) {
-        const otcOfferPubkey = new PublicKey(otcOfferIdArg);
+        const otcOfferPubkey = new PublicKey(otcOnChainId);
         const tx = await (otc as any).fillOffer(otcOfferPubkey);
         spinner.stop();
         printTxResultTable(tx, { explorerUrl: getExplorerUrl(chainId), action: 'otc fill' });
@@ -181,9 +204,8 @@ otcCommand
 otcCommand
   .command('cancel <otc-offer-id>')
   .description('Cancel an OTC offer (reclaim the order position)')
-  .action(async (otcOfferIdArg, options, command) => {
+  .action(async (otcOfferIdArg, _options, command) => {
     const globalOpts = command.optsWithGlobals();
-    const chainId = getChainIdFromOpts(command);
 
     const ok = await confirmTx(`Cancel OTC offer ${otcOfferIdArg}. Proceed?`, command);
     if (!ok) return;
@@ -193,16 +215,29 @@ otcCommand
     try {
       const mnemonic = getMnemonic();
       const apiUrl = (config.get('apiUrl') as string) || 'https://api.whales.market';
+
+      let chainId = getOptionalChainIdFromOpts(command);
+      let otcOnChainId: string;
+
+      if (UUID_REGEX.test(otcOfferIdArg.trim())) {
+        const resolved = await resolveOtcOffer(otcOfferIdArg);
+        chainId = chainId ?? resolved.chainId;
+        otcOnChainId = resolved.exitPositionIndex;
+      } else {
+        if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
+        otcOnChainId = otcOfferIdArg;
+      }
+
       const otc = getOtcPreMarket(chainId, mnemonic, apiUrl);
 
       if (isEvmChain(chainId)) {
-        const tx = await (otc as any).cancelOffer(otcOfferIdArg);
+        const tx = await (otc as any).cancelOffer(otcOnChainId);
         spinner.stop();
         printTxResultTable(tx, { explorerUrl: getExplorerUrl(chainId), action: 'otc cancel' });
         await tx.wait();
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isSolanaChain(chainId)) {
-        const otcOfferPubkey = new PublicKey(otcOfferIdArg);
+        const otcOfferPubkey = new PublicKey(otcOnChainId);
         const tx = await (otc as any).cancelOffer(otcOfferPubkey);
         spinner.stop();
         printTxResultTable(tx, { explorerUrl: getExplorerUrl(chainId), action: 'otc cancel' });
