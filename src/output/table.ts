@@ -247,7 +247,7 @@ export function printOffersTable(offers: any[]): void {
       chalk.cyan('Address'),
       chalk.cyan('OTC Index')
     ],
-    colWidths: [6, 10, 8, 10, 12, 10, 10, 20, 10]
+    colWidths: [6, 38, 8, 10, 12, 10, 10, 20, 10]
   });
   
   offers.forEach((offer: any) => {
@@ -283,7 +283,7 @@ export function printOrdersTable(orders: any[]): void {
       chalk.cyan('Amount'),
       chalk.cyan('Status')
     ],
-    colWidths: [8, 12, 10, 20, 20, 15, 12]
+    colWidths: [38, 13, 10, 20, 20, 15, 12]
   });
   
   orders.forEach((order: any) => {
