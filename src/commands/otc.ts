@@ -51,7 +51,6 @@ otcCommand
   .requiredOption('--price <n>', 'Resell price per token in exToken units (e.g. 1.5 for 1.5 USDC per token)')
   .requiredOption('--ex-token <addr>', 'Exchange token address')
   .option('--deadline <unix-ts>', 'Offer deadline (default: 1 year from now)')
-  .option('--ex-token-decimals <n>', 'Exchange token decimals for EVM (default: 6)', '6')
   .action(async (orderIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
 
@@ -97,7 +96,7 @@ otcCommand
       const totalValue = pricePerToken * amount;
 
       if (isEvmChain(chainId)) {
-        const exDecimals = parseInt(options.exTokenDecimals, 10) || 6;
+        const exDecimals = await (preMarket as any).getTokenDecimals(options.exToken);
         const value = parseUnits(totalValue.toString(), exDecimals);
 
         const tx = await (otc as any).createOffer({
@@ -112,7 +111,7 @@ otcCommand
         if (globalOpts.format !== 'json') console.log('Confirmed on-chain.');
       } else if (isSolanaChain(chainId)) {
         const exToken = new PublicKey(options.exToken);
-        const exDecimals = parseInt(options.exTokenDecimals, 10) || 6;
+        const exDecimals = await (preMarket as any).getTokenDecimals(options.exToken);
         const value = new BN(Math.round(totalValue * Math.pow(10, exDecimals)));
         const deadlineBN = new BN(deadline);
 

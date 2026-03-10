@@ -17,6 +17,7 @@ import {
   getAssociatedTokenAddressSync,
   getAssociatedTokenAddress,
   getAccount,
+  getMint,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 import axios from 'axios';
@@ -208,6 +209,13 @@ export class SolanaPreMarket {
       offerId: raw.offer.toBase58(), // `offer` is the PDA pubkey of the offer account
       status,
     };
+  }
+
+  async getTokenDecimals(mintAddress: string): Promise<number> {
+    const mint = new PublicKey(mintAddress);
+    if (mint.equals(NATIVE_MINT)) return 9;
+    const mintInfo = await getMint(this.connection, mint);
+    return mintInfo.decimals;
   }
 
   // ── Offer lifecycle ─────────────────────────────────────────────────────────

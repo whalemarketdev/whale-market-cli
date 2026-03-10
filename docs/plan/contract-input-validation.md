@@ -10,7 +10,7 @@
 
 | Status | Count | Items |
 |--------|-------|-------|
-| ✅ Done | 17 | All except #2 (optional), #16 (N/A) |
+| ✅ Done | 18 | All except #2 (optional), #16 (N/A) |
 | ⏳ Skipped | 1 | #2 (optional — covered by #1 check) |
 | N/A | 1 | #16 (Aptos discount — frontend also unsupported) |
 
@@ -274,6 +274,18 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 ---
 
+### 23. `otc create` — Ex-token Decimals Auto-fetch ✅ Done
+
+**Before:** `--ex-token-decimals <n>` flag required (default: 6), prone to misconfiguration.
+
+**After:** Removed the flag. Decimals are fetched on-chain:
+- **EVM:** `EvmPreMarket.getTokenDecimals(exTokenAddress)` — calls `token.decimals()` on the ERC20 contract; returns 18 for ETH
+- **Solana:** `SolanaPreMarket.getTokenDecimals(mintAddress)` — calls `getMint(connection, mint)` from `@solana/spl-token`; returns 9 for native SOL (`NATIVE_MINT`)
+
+**API needed:** None — on-chain RPC only.
+
+---
+
 ## Summary Table
 
 | # | Chain | Function | Status |
@@ -300,6 +312,7 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 | 20 | OTC EVM | `fillOffer` ERC20 pre-approval | ✅ Done |
 | 21 | OTC EVM | `fillOffer` referral discount encoding | ✅ Done |
 | 22 | OTC Solana | `fillOffer` PDA PublicKey format | ✅ Done |
+| 23 | OTC EVM+Solana | `createOffer` — ex-token decimals auto-fetch | ✅ Done |
 
 ---
 
