@@ -192,7 +192,7 @@ function printOrderBook(
         chalk.cyan('Fill'),
         chalk.cyan('Value')
       ],
-      colWidths: [4, 12, 8, 12, 10, 10, 10, 8, 8, 12],
+      // colWidths: [4, 12, 8, 12, 10, 10, 10, 8, 8, 12],
       style: {
         head: [],
         border: []
@@ -239,7 +239,7 @@ function printOrderBook(
         chalk.cyan('Fill'),
         chalk.cyan('Value')
       ],
-      colWidths: [4, 12, 8, 12, 10, 10, 10, 8, 8, 12],
+      // colWidths: [4, 12, 8, 12, 10, 10, 10, 8, 8, 12],
       style: {
         head: [],
         border: []

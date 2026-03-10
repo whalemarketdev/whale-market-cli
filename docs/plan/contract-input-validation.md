@@ -10,7 +10,7 @@
 
 | Status | Count | Items |
 |--------|-------|-------|
-| ✅ Done | 17 | All except #2 (optional), #16 (N/A) |
+| ✅ Done | 18 | All except #2 (optional), #16 (N/A) |
 | ⏳ Skipped | 1 | #2 (optional — covered by #1 check) |
 | N/A | 1 | #16 (Aptos discount — frontend also unsupported) |
 
@@ -274,6 +274,44 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 ---
 
+### 23. `otc create` — Ex-token Decimals Auto-fetch ✅ Done
+
+**Before:** `--ex-token-decimals <n>` flag required (default: 6), prone to misconfiguration.
+
+**After:** Removed the flag. Decimals are fetched on-chain:
+- **EVM:** `EvmPreMarket.getTokenDecimals(exTokenAddress)` — calls `token.decimals()` on the ERC20 contract; returns 18 for ETH
+- **Solana:** `SolanaPreMarket.getTokenDecimals(mintAddress)` — calls `getMint(connection, mint)` from `@solana/spl-token`; returns 9 for native SOL (`NATIVE_MINT`)
+
+**API needed:** None — on-chain RPC only.
+
+---
+
+### 24. `trade create-offer` — EVM Ex-token Decimals On-chain Fetch ✅ Done
+
+**Before:** `--ex-token-decimals` option with default fallback to 6 for ERC20.
+
+**After:** Removed `--ex-token-decimals` option from `trade create-offer`. Decimals are fetched on-chain:
+- `ETH_ADDRESS` → 18 (no RPC call)
+- All other ERC20s → `pm.getTokenDecimals(exTokenAddress)` (calls `token.decimals()` on-chain)
+
+**API needed:** None — on-chain RPC only.
+
+---
+
+### 25. `trade settle` — Settlement Token Auto-fetch from API ✅ Done
+
+**Before:** `--token-address` and `--amount` always required for EVM settle.
+
+**After:** When an order UUID is passed, `resolveOrder()` now also returns `tokenAddress` (`order.token.address`) and `tokenAmount` (`order.amount`) from `GET /v2/detail-order/:uuid`. These are used as defaults; `--token-address` / `--amount` still override them. When an on-chain ID is passed (no UUID), both flags are still required.
+
+**Fields from API (`/v2/detail-order/:uuid` response):**
+- `tokenAddress` ← `order.offer.token.address` (token is nested under `offer.token`, not top-level)
+- `tokenAmount` ← `order.amount` (human-readable token count)
+
+**API needed:** `GET /v2/detail-order/:uuid` (already called by `resolveOrder`).
+
+---
+
 ## Summary Table
 
 | # | Chain | Function | Status |
@@ -300,6 +338,9 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 | 20 | OTC EVM | `fillOffer` ERC20 pre-approval | ✅ Done |
 | 21 | OTC EVM | `fillOffer` referral discount encoding | ✅ Done |
 | 22 | OTC Solana | `fillOffer` PDA PublicKey format | ✅ Done |
+| 23 | OTC EVM+Solana | `createOffer` — ex-token decimals auto-fetch | ✅ Done |
+| 24 | EVM | `trade create-offer` — ex-token decimals on-chain fetch (no default 6) | ✅ Done |
+| 25 | EVM | `trade settle` — token address + amount auto-fetched from API when UUID passed | ✅ Done |
 
 ---
 

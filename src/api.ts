@@ -108,7 +108,7 @@ export class ApiClient {
   }
   
   async getOrder(id: string): Promise<ApiResponse<any>> {
-    return this.get(`/transactions/orders/${id}`);
+    return this.get(`/v2/detail-order/${id}`);
   }
   
   async getOrdersByAddress(address: string, params?: any): Promise<ApiResponse<any[]>> {
