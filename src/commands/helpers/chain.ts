@@ -66,6 +66,16 @@ export function isEvmChain(chainId: number): boolean {
   return getChainType(chainId) === 'evm';
 }
 
+/** Returns the native exchange token address/identifier for the given chain. */
+export function getNativeExToken(chainId: number): string {
+  const type = getChainType(chainId);
+  if (type === 'evm') return '0x0000000000000000000000000000000000000000';
+  if (type === 'solana') return 'So11111111111111111111111111111111111111112';
+  if (type === 'sui') return '0x2::sui::SUI';
+  if (type === 'aptos') return '0x1::aptos_coin::AptosCoin';
+  return '0x0000000000000000000000000000000000000000';
+}
+
 export function isSolanaChain(chainId: number): boolean {
   return getChainType(chainId) === 'solana';
 }

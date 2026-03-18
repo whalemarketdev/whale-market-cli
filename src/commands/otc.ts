@@ -21,6 +21,7 @@ import {
   getPreMarket,
   isEvmChain,
   isSolanaChain,
+  getNativeExToken,
   SOLANA_MAINNET_CHAIN_ID,
   SOLANA_DEVNET_CHAIN_ID,
 } from './helpers/chain';
@@ -54,7 +55,7 @@ otcCommand
   .command('create <order-id>')
   .description('Create an OTC offer to resell your order position (buyer only)')
   .requiredOption('--price <n>', 'Resell price per token in exToken units (e.g. 1.5 for 1.5 USDC per token)')
-  .requiredOption('--ex-token <addr>', 'Exchange token address')
+  .option('--ex-token <addr>', 'Exchange token address (default: native token for the chain)')
   .option('--deadline <unix-ts>', 'Offer deadline (default: 1 year from now)')
   .action(async (orderIdArg, options, command) => {
     const globalOpts = command.optsWithGlobals();
@@ -96,6 +97,8 @@ otcCommand
       // Fetch order to get amount — value = price × amount (total collateral)
       const preMarket = getPreMarket(chainId, mnemonic, apiUrl);
 
+      const exToken = (options.exToken as string | undefined) ?? getNativeExToken(chainId);
+
       if (isEvmChain(chainId)) {
         const pm = preMarket as EvmPreMarket;
         const evmOtc = otc as EvmOtcPreMarket;
@@ -103,12 +106,12 @@ otcCommand
         const amount = order?.amount ?? 0;
         if (!amount || amount <= 0) throw new Error(`Order ${orderIdArg} not found or has zero amount`);
         const totalValue = pricePerToken * amount;
-        const exDecimals = await pm.getTokenDecimals(options.exToken);
+        const exDecimals = await pm.getTokenDecimals(exToken);
         const value = parseUnits(totalValue.toString(), exDecimals);
 
         const tx = await evmOtc.createOffer({
           orderId,
-          exTokenAddress: options.exToken,
+          exTokenAddress: exToken,
           value,
           deadline,
         });
@@ -123,14 +126,14 @@ otcCommand
         const amount = order?.amount ?? 0;
         if (!amount || amount <= 0) throw new Error(`Order ${orderIdArg} not found or has zero amount`);
         const totalValue = pricePerToken * amount;
-        const exToken = new PublicKey(options.exToken);
-        const exDecimals = await pm.getTokenDecimals(options.exToken);
+        const exTokenPubkey = new PublicKey(exToken);
+        const exDecimals = await pm.getTokenDecimals(exToken);
         const value = new BN(Math.round(totalValue * Math.pow(10, exDecimals)));
         const deadlineBN = new BN(deadline);
 
         const tx = await solOtc.createOffer({
           orderId,
-          exToken,
+          exToken: exTokenPubkey,
           value,
           deadline: deadlineBN,
         });

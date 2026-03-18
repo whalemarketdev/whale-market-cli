@@ -507,8 +507,7 @@ whales trade create-offer \
   --token <token-uuid-or-id> \
   --side buy \
   --price 0.5 \
-  --amount 100 \
-  --ex-token <exchange-token-address>
+  --amount 100
 ```
 
 Options:
@@ -516,16 +515,25 @@ Options:
 |--------|----------|-------------|
 | `--token <id>` | Yes | Token UUID (auto-resolves chain + ID), numeric, or bytes32 hex |
 | `--side <side>` | Yes | `buy` or `sell` |
-| `--price <n>` | Yes | Price per token in USD (e.g. `0.5`) |
+| `--price <n>` | Yes | Price per token in exchange token units (e.g. `0.5` USDC) |
 | `--amount <n>` | Yes | Token amount |
-| `--ex-token <addr>` | Yes | Exchange token address (USDC, USDT, ETH, wSOL, etc.) |
+| `--ex-token <addr>` | No | Exchange token address (default: chain native token) |
 | `--full-match` | No | Require full fill only (no partial fills) |
 | `--token-config <addr>` | Sui/Aptos | Token config object address |
-| `--coin-type <type>` | Sui | Coin type (default: `0x2::sui::SUI`) |
+| `--coin-type <type>` | Sui | Coin type (overrides `--ex-token` for Sui) |
 
-> Minimum collateral: **$10 USD**. EVM exchange token price is fetched from the API to convert to USD.
+**Default exchange tokens when `--ex-token` is omitted:**
 
-> Exchange token decimals are fetched on-chain automatically (18 for ETH/native, otherwise `token.decimals()`).
+| Chain | Default |
+|-------|---------|
+| EVM | `0x0000000000000000000000000000000000000000` (native ETH/BNB/etc.) |
+| Solana | `So11111111111111111111111111111111111111112` (native SOL) |
+| Sui | `0x2::sui::SUI` |
+| Aptos | `0x1::aptos_coin::AptosCoin` |
+
+> Minimum collateral: **$10 USD**. Exchange token price is fetched from the API for all chains to convert to USD.
+
+> Exchange token decimals are fetched on-chain automatically (18 for EVM native, 9 for SOL, otherwise `token.decimals()`).
 
 **Token ID formats (when not using UUID):**
 - EVM: numeric (e.g. `1`) or bytes32 hex (e.g. `0x313638...`) — requires `--chain-id`
@@ -535,7 +543,14 @@ Options:
 **Examples:**
 
 ```bash
-# Using token UUID — chain and on-chain ID are auto-resolved
+# Token UUID, omit --ex-token to use chain native token
+whales trade create-offer \
+  --token a2fb64a3-6bff-465c-bbee-d7fd7d1ca45d \
+  --side buy \
+  --price 0.25 \
+  --amount 500
+
+# Explicit USDC ex-token on Solana
 whales trade create-offer \
   --token a2fb64a3-6bff-465c-bbee-d7fd7d1ca45d \
   --side buy \
@@ -552,12 +567,10 @@ whales trade create-offer \
   --amount 200 \
   --ex-token 0x55d398326f99059fF775485246999027B3197955
 
-# Full match only
+# Full match, native ex-token
 whales trade create-offer \
   --token a2fb64a3-6bff-465c-bbee-d7fd7d1ca45d \
-  --side buy --price 0.5 --amount 100 \
-  --ex-token EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
-  --full-match
+  --side buy --price 0.5 --amount 100 --full-match
 ```
 
 ---
@@ -579,9 +592,9 @@ whales trade fill-offer 123 --chain-id 56
 
 Options:
 - `--amount <n>` — partial fill amount (default: fill the remaining amount)
-- `--ex-token <addr>` — exchange token address (EVM: auto-fetched from offer if omitted)
+- `--ex-token <addr>` — exchange token address for $10 check on non-EVM chains (default: chain native token; EVM: auto-fetched from offer)
 
-> Minimum fill collateral: **$10 USD** (only enforced when the remaining offer collateral is also ≥ $10).
+> Minimum fill collateral: **$10 USD** on all chains. Only enforced when the remaining offer collateral is also ≥ $10. Skipped entirely when filling all remaining unfilled tokens.
 
 ---
 
@@ -659,10 +672,11 @@ OTC lets a buyer resell their order position to a new buyer before settlement. S
 Create an OTC offer to resell your order position.
 
 ```bash
-# Order UUID — chain and on-chain ID auto-resolved
-whales otc create <order-uuid> \
-  --price 1.2 \
-  --ex-token 0xUSDCAddress
+# Order UUID, native ex-token (e.g. SOL on Solana, ETH on EVM)
+whales otc create <order-uuid> --price 0.001
+
+# Explicit ex-token
+whales otc create <order-uuid> --price 1.2 --ex-token 0xUSDCAddress
 
 # On-chain ID — requires --chain-id
 whales otc create 42 \
@@ -675,11 +689,11 @@ whales otc create 42 \
 Options:
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--price <n>` | Yes | Resell price per token (in exchange token units, e.g. 1.2 USDC) |
-| `--ex-token <addr>` | Yes | Exchange token address |
+| `--price <n>` | Yes | Resell price per token in exchange token units (e.g. `1.2` USDC) |
+| `--ex-token <addr>` | No | Exchange token address (default: chain native token) |
 | `--deadline <unix-ts>` | No | Offer expiry (default: 1 year from now) |
 
-> Exchange token decimals are fetched on-chain automatically.
+> Exchange token decimals are fetched on-chain automatically. Default ex-tokens are the same as for `create-offer` (see table above).
 
 ---
 

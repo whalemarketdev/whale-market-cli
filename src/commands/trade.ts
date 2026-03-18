@@ -18,6 +18,7 @@ import {
   isSolanaChain,
   isSuiChain,
   isAptosChain,
+  getNativeExToken,
   SOLANA_MAINNET_CHAIN_ID,
   SOLANA_DEVNET_CHAIN_ID,
 } from './helpers/chain';
@@ -53,6 +54,37 @@ function getExplorerUrl(chainId: number): string | undefined {
 }
 
 
+/** $10 minimum fill collateral check — applies to all chains. */
+async function checkFillCollateral(
+  chainId: number,
+  exTokenAddress: string,
+  offerData: { totalAmount: number; filledAmount: number; collateral: { uiAmount: string } },
+  fillAmount: number
+): Promise<void> {
+  // Skip check when filling all remaining unfilled tokens
+  const unfilledAmount = offerData.totalAmount - offerData.filledAmount;
+  if (fillAmount >= unfilledAmount) return;
+
+  try {
+    const prices = await apiClient.getExTokenPrices(chainId);
+    const tokenPrice = prices.find((p: any) =>
+      p.address.toLowerCase() === exTokenAddress.toLowerCase()
+    )?.price;
+    if (tokenPrice) {
+      const totalCollateralUi = parseFloat(offerData.collateral.uiAmount);
+      const fillCollateralUi = totalCollateralUi * (fillAmount / offerData.totalAmount);
+      const fillCollateralUsd = fillCollateralUi * tokenPrice;
+      const remainingAmount = offerData.totalAmount - offerData.filledAmount - fillAmount;
+      const remainingUsd = totalCollateralUi * Math.max(0, remainingAmount) / offerData.totalAmount * tokenPrice;
+      if (fillCollateralUsd < 10 && remainingUsd >= 10) {
+        throw new Error(`Fill amount too small: $${fillCollateralUsd.toFixed(2)} collateral is below the $10 minimum.`);
+      }
+    }
+  } catch (err: any) {
+    if (err.message?.includes('$10')) throw err;
+  }
+}
+
 export const tradeCommand = new Command('trade')
   .description('Pre-market trading (create, fill, close offers; settle, claim-collateral orders)');
 
@@ -64,7 +96,7 @@ tradeCommand
   .requiredOption('--side <side>', 'Offer side: buy | sell')
   .requiredOption('--price <n>', 'Price per token (USD, 6-decimal precision e.g. 0.5)')
   .requiredOption('--amount <n>', 'Token amount')
-  .requiredOption('--ex-token <addr>', 'Exchange token address (USDC, ETH, etc.)')
+  .option('--ex-token <addr>', 'Exchange token address (default: native token for the chain)')
   .option('--full-match', 'Require full match only')
   .option('--token-config <addr>', 'Token config address (required for Sui/Aptos)')
   .option('--coin-type <type>', 'Coin type for Sui (e.g. 0x2::sui::SUI)')
@@ -90,19 +122,17 @@ tradeCommand
       if (chainId == null) throw new Error('--chain-id is required when passing an on-chain ID (use a UUID to auto-resolve chain and ID)');
     }
 
-    const collateral = amount * price; // exToken units for EVM, USD for Solana/Sui/Aptos
+    const exToken = (options.exToken as string | undefined) ?? getNativeExToken(chainId!);
+    const collateral = amount * price; // in exToken units (EVM) or USD (Solana/Sui/Aptos)
 
-    // $10 minimum check — EVM price is in exToken units, need API price to convert to USD
-    let collateralUsd = collateral; // default: price is in USD (Solana/Sui/Aptos)
-    if (isEvmChain(chainId) && options.exToken) {
-      try {
-        const prices = await apiClient.getExTokenPrices(chainId);
-        const exTokenLower = (options.exToken as string).toLowerCase();
-        const tokenPrice = prices.find((p: any) => p.address?.toLowerCase() === exTokenLower)?.price;
-        if (tokenPrice) collateralUsd = collateral * tokenPrice;
-      } catch {
-        // API unavailable — fall through with collateral as-is
-      }
+    // $10 minimum check — fetch ex-token price from API for all chains
+    let collateralUsd = collateral; // fallback: treat as USD
+    try {
+      const prices = await apiClient.getExTokenPrices(chainId!);
+      const tokenPrice = prices.find((p: any) => p.address?.toLowerCase() === exToken.toLowerCase())?.price;
+      if (tokenPrice) collateralUsd = collateral * tokenPrice;
+    } catch {
+      // API unavailable — fall through with collateral as-is
     }
 
     if (collateralUsd < 10) {
@@ -113,7 +143,7 @@ tradeCommand
       return;
     }
     const ok = await confirmTx(
-      `Create ${options.side} offer: ${amount} tokens @ ${isEvmChain(chainId) ? price + ' exToken' : '$' + price} = $${collateralUsd.toFixed(2)} collateral. Proceed?`,
+      `Create ${options.side} offer: ${amount} tokens @ ${price} (exToken: ${exToken}) = $${collateralUsd.toFixed(2)} collateral. Proceed?`,
       command
     );
     if (!ok) return;
@@ -138,8 +168,7 @@ tradeCommand
                 if (isNaN(n)) throw new Error('--token must be numeric, bytes32 hex (0x + 64 chars), or token UUID for EVM');
                 return n;
               })();
-        const exTokenAddress = options.exToken;
-        const exDecimals = exTokenAddress === ETH_ADDRESS ? 18 : await pm.getTokenDecimals(exTokenAddress);
+        const exDecimals = exToken === ETH_ADDRESS ? 18 : await pm.getTokenDecimals(exToken);
         const collateral = parseUnits((amount * price).toString(), exDecimals);
 
         const tx = await pm.createOffer({
@@ -147,7 +176,7 @@ tradeCommand
           side: options.side,
           amount,
           collateral,
-          exTokenAddress,
+          exTokenAddress: exToken,
           isFullMatch,
         });
         spinner.stop();
@@ -158,13 +187,13 @@ tradeCommand
         const pm = preMarket as SolanaPreMarket;
         const tokenId = parseInt(tokenOnChainId, 10);
         if (isNaN(tokenId)) throw new Error('--token must be numeric or token UUID for Solana');
-        const exToken = new PublicKey(options.exToken);
+        const exTokenPubkey = new PublicKey(exToken);
         const rawPrice = Math.round(price * WEI6);
 
         const tx = await pm.createOffer({
           tokenId,
           side: options.side,
-          exToken,
+          exToken: exTokenPubkey,
           amount,
           price: rawPrice,
           isFullMatch,
@@ -177,7 +206,7 @@ tradeCommand
         const pm = preMarket as SuiPreMarket;
         const tokenConfig = options.tokenConfig || tokenOnChainId;
         if (!tokenConfig) throw new Error('--token-config is required for Sui');
-        const coinType = options.coinType || '0x2::sui::SUI';
+        const coinType = options.coinType || exToken;
         const rawAmount = BigInt(Math.round(amount * WEI6));
         const rawValue = BigInt(Math.round(amount * price * WEI6));
 
@@ -201,7 +230,7 @@ tradeCommand
 
         const tx = await pm.createOffer({
           tokenConfig,
-          exToken: options.exToken,
+          exToken,
           side: options.side,
           amount,
           value: rawValue,
@@ -281,25 +310,7 @@ tradeCommand
           ? (BigInt(offerData.collateral.amount) * amountRaw) / totalRaw
           : BigInt(offerData.collateral.amount);
 
-        // $10 minimum collateral check
-        try {
-          const prices = await apiClient.getExTokenPrices(chainId);
-          const tokenPrice = prices.find((p: any) =>
-            p.address.toLowerCase() === exTokenAddress.toLowerCase()
-          )?.price;
-          if (tokenPrice) {
-            const totalCollateralUi = parseFloat(offerData.collateral.uiAmount);
-            const fillCollateralUi = totalCollateralUi * (amount / offerData.totalAmount);
-            const fillCollateralUsd = fillCollateralUi * tokenPrice;
-            const remainingAmount = offerData.totalAmount - offerData.filledAmount - amount;
-            const remainingUsd = totalCollateralUi * Math.max(0, remainingAmount) / offerData.totalAmount * tokenPrice;
-            if (fillCollateralUsd < 10 && remainingUsd >= 10) {
-              throw new Error(`Fill amount too small: $${fillCollateralUsd.toFixed(2)} collateral is below the $10 minimum.`);
-            }
-          }
-        } catch (err: any) {
-          if (err.message?.includes('$10')) throw err;
-        }
+        await checkFillCollateral(chainId, exTokenAddress, offerData, amount);
 
         const tx = await pm.fillOffer({
           offerId: offerId as number,
@@ -318,6 +329,8 @@ tradeCommand
           ? parseFloat(options.amount)
           : offerData.totalAmount - offerData.filledAmount;
 
+        await checkFillCollateral(chainId, (options.exToken as string | undefined) ?? getNativeExToken(chainId), offerData, amount);
+
         const tx = await pm.fillOffer({
           offerId: offerId as number,
           amount: amount || offerData.totalAmount,
@@ -332,6 +345,8 @@ tradeCommand
         const amount = options.amount ? parseFloat(options.amount) : offerData.totalAmount - offerData.filledAmount;
         const rawAmount = BigInt(Math.round(amount * WEI6));
 
+        await checkFillCollateral(chainId, (options.exToken as string | undefined) ?? getNativeExToken(chainId), offerData, amount);
+
         const tx = await pm.fillOffer({
           offerId: offerId as string,
           amount: rawAmount,
@@ -344,6 +359,8 @@ tradeCommand
         const pm = preMarket as AptosPreMarket;
         const offerData = await pm.getOffer(offerId as string);
         const amount = options.amount ? parseFloat(options.amount) : offerData.totalAmount - offerData.filledAmount;
+
+        await checkFillCollateral(chainId, (options.exToken as string | undefined) ?? getNativeExToken(chainId), offerData, amount);
 
         const tx = await pm.fillOffer({
           offerAddress: offerId as string,

@@ -312,6 +312,63 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 
 ---
 
+### 26. `--ex-token` Optional — Defaults to Chain Native Token ✅ Done
+
+**Before:** `--ex-token` was a required option on `trade create-offer` and `otc create`.
+
+**After:** `--ex-token` is now optional. When omitted, the native token for the chain is used:
+
+| Chain | Native token |
+|-------|-------------|
+| EVM | `0x0000000000000000000000000000000000000000` (ETH / chain native) |
+| Solana | `So11111111111111111111111111111111111111112` (NATIVE_MINT / wSOL) |
+| Sui | `0x2::sui::SUI` |
+| Aptos | `0x1::aptos_coin::AptosCoin` |
+
+`getNativeExToken(chainId)` added to `src/commands/helpers/chain.ts`.
+
+---
+
+### 27. `$10` Collateral Check for All Chains ✅ Done
+
+**Before:** `getExTokenPrices(chainId)` API call was guarded by `if (isEvmChain(chainId))` — non-EVM chains fell through with `collateralUsd = amount × price` (assumed USD).
+
+**After:** Price lookup applied for all chains. The resolved `exToken` address (from `--ex-token` or native default) is looked up in the API response. If found, `collateralUsd = collateral × tokenPrice`. If the API is unavailable or the token is not listed, falls through with `collateralUsd = collateral`.
+
+**API:** `GET /network-chains/v2/price?chainId={chainId}&currency=usd`
+
+---
+
+### 28. `fill-offer` $10 Check for All Chains ✅ Done
+
+**Before:** $10 minimum fill collateral check only existed in the EVM branch of `fill-offer`.
+
+**After:** Extracted to a shared `checkFillCollateral(chainId, exTokenAddress, offerData, fillAmount)` helper function. Called in all four chain branches:
+
+- **EVM** — `exTokenAddress` resolved from `offerData.exTokenAddress` (existing behaviour)
+- **Solana/Sui/Aptos** — `exTokenAddress = options.exToken ?? getNativeExToken(chainId)`
+
+All chains use `offerData.collateral.uiAmount` (human-readable) for the collateral calculation. The API price lookup (`GET /network-chains/v2/price?chainId=…`) fetches the ex-token price in USD.
+
+The check only rejects when `fillCollateralUsd < $10` AND `remainingCollateralUsd >= $10` (same rule as EVM — allows filling the last small remainder).
+
+---
+
+### 29. `checkFillCollateral` — Skip When Filling All Remaining Amount ✅ Done
+
+**Before:** The $10 check ran even when the user was filling all remaining unfilled tokens, potentially rejecting valid "clear the rest" fills.
+
+**After:** Added an early return at the top of `checkFillCollateral`:
+
+```typescript
+const unfilledAmount = offerData.totalAmount - offerData.filledAmount;
+if (fillAmount >= unfilledAmount) return;
+```
+
+If `fillAmount` covers all remaining unfilled tokens, the $10 USD check is skipped entirely.
+
+---
+
 ## Summary Table
 
 | # | Chain | Function | Status |
@@ -341,6 +398,10 @@ Response: { "data": { "buyerDiscount": number, "signature": "0x...", "buyerRefer
 | 23 | OTC EVM+Solana | `createOffer` — ex-token decimals auto-fetch | ✅ Done |
 | 24 | EVM | `trade create-offer` — ex-token decimals on-chain fetch (no default 6) | ✅ Done |
 | 25 | EVM | `trade settle` — token address + amount auto-fetched from API when UUID passed | ✅ Done |
+| 26 | All | `--ex-token` optional on `create-offer` + `otc create`; defaults to chain native token | ✅ Done |
+| 27 | All | `$10` collateral check uses `getExTokenPrices` API for all chains (not EVM-only) | ✅ Done |
+| 28 | All | `fill-offer` $10 min check extended to Solana/Sui/Aptos via shared `checkFillCollateral` helper | ✅ Done |
+| 29 | All | `checkFillCollateral` — skip $10 check when filling all remaining unfilled tokens | ✅ Done |
 
 ---
 
