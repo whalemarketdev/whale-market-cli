@@ -144,6 +144,7 @@ Settlement tx uses `tge_oft_address` as `tokenAddress` — no other changes to t
 Identity (one of):
   --token-uuid <uuid>          resolves all details from API
   --oft-address <addr>         \
+  --adapter-address <addr>      MyOFTAdapter contract on origin chain
   --origin-chain-id <id>        explicit mode
   --dest-chain-id <id>         /
 
