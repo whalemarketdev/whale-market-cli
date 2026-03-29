@@ -66,8 +66,7 @@ export async function resolveOtcOffer(uuid: string): Promise<{
 }
 
 /** Resolves chainId + on-chain order ID from GET /v2/detail-order/{uuid}.
- *  Also returns tokenAddress (order.offer.token.address) and tokenAmount (order.amount)
- *  for use by the settle command when auto-fetching settlement params.
+ *  Also returns tokenAddress, tokenAmount, and token TGE fields for OFT bridge support.
  */
 export async function resolveOrder(uuid: string): Promise<{
   chainId: number;
@@ -75,16 +74,30 @@ export async function resolveOrder(uuid: string): Promise<{
   customIndex: string | null;
   tokenAddress?: string;
   tokenAmount?: number;
+  token?: {
+    tge_oft_address?: string;
+    tge_network_id?: number;
+    tge_adapter_address?: string;
+    tge_native_adapter_address?: string;
+    tge_token_address?: string;
+  };
 }> {
   const res = await apiClient.getOrder(uuid);
   const o = (res as any)?.data ?? res;
   const chainId = o?.chain_id ?? o?.network?.chain_id;
   const orderIndex = o?.order_index;
   const customIndex = o?.custom_index ?? null;
-  // Token address is nested under offer.token.address in /v2/detail-order response
   const tokenAddress: string | undefined = o?.offer?.token?.address ?? undefined;
   const tokenAmount: number | undefined = o?.amount != null ? Number(o.amount) : undefined;
+  const rawToken = o?.offer?.token ?? o?.token;
+  const token = rawToken ? {
+    tge_oft_address: rawToken.tge_oft_address,
+    tge_network_id: rawToken.tge_network_id,
+    tge_adapter_address: rawToken.tge_adapter_address,
+    tge_native_adapter_address: rawToken.tge_native_adapter_address,
+    tge_token_address: rawToken.tge_token_address,
+  } : undefined;
   if (!chainId) throw new Error(`Order ${uuid}: missing chain_id in API response`);
   if (orderIndex == null) throw new Error(`Order ${uuid}: missing order_index in API response`);
-  return { chainId, orderIndex: String(orderIndex), customIndex, tokenAddress, tokenAmount };
+  return { chainId, orderIndex: String(orderIndex), customIndex, tokenAddress, tokenAmount, token };
 }

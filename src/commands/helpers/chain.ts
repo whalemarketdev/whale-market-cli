@@ -3,6 +3,7 @@
  * Maps chainId to the correct blockchain adapter and contract instances.
  */
 
+import { ethers } from 'ethers';
 import { Connection } from '@solana/web3.js';
 import { Network } from '@aptos-labs/ts-sdk';
 import {
@@ -23,6 +24,7 @@ import {
   deriveSuiKeypair,
   deriveAptosAccount,
 } from '../../blockchain';
+import { OFTBridge } from '../../blockchain/evm/contracts/OFTBridge';
 import {
   EVM_CHAINS,
   PRE_MARKET_ADDRESS,
@@ -242,4 +244,45 @@ export function parseOfferId(chainId: number, value: string): number | string {
 /** Resolve order ID format. */
 export function parseOrderId(chainId: number, value: string): number | string {
   return parseOfferId(chainId, value);
+}
+
+export interface OFTBridgeTokenConfig {
+  tge_oft_address: string;
+  tge_network_id: number;
+  tge_adapter_address?: string;
+  tge_native_adapter_address?: string;
+  tge_token_address?: string;
+}
+
+/**
+ * Build an OFTBridge instance from token TGE fields.
+ * tradingChainId is the chain where the pre-market contract lives (where OFT is deployed).
+ */
+export function getOFTBridge(
+  token: OFTBridgeTokenConfig,
+  tradingChainId: number,
+  mnemonic: string
+): OFTBridge {
+  const { tge_oft_address, tge_network_id, tge_adapter_address, tge_native_adapter_address, tge_token_address } = token;
+  const isNative = !tge_adapter_address && !!tge_native_adapter_address;
+  const oftAdapterAddress = (tge_adapter_address ?? tge_native_adapter_address)!;
+  if (!oftAdapterAddress) {
+    throw new Error('Token missing tge_adapter_address or tge_native_adapter_address');
+  }
+
+  const originProvider = new ethers.JsonRpcProvider(resolveRpc(tge_network_id));
+  const tradingProvider = new ethers.JsonRpcProvider(resolveRpc(tradingChainId));
+  const signer = deriveEvmWallet(mnemonic.trim());
+
+  return new OFTBridge({
+    originProvider,
+    tradingProvider,
+    signer,
+    oftAdapterAddress,
+    oftAddress: tge_oft_address,
+    originTokenAddress: tge_token_address ?? null,
+    originChainId: tge_network_id,
+    tradingChainId,
+    isNative,
+  });
 }
