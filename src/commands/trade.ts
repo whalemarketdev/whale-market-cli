@@ -22,8 +22,9 @@ import {
   SOLANA_MAINNET_CHAIN_ID,
   SOLANA_DEVNET_CHAIN_ID,
 } from './helpers/chain';
+import inquirer from 'inquirer';
 import { handleError, printTxResultTable } from '../output';
-import { ETH_ADDRESS, parseUnits } from '../blockchain/evm/utils';
+import { ETH_ADDRESS, parseUnits, formatUnits } from '../blockchain/evm/utils';
 import { EVM_CHAINS } from '../blockchain/evm/constants';
 import { apiClient } from '../api';
 import {
@@ -31,7 +32,10 @@ import {
   SolanaPreMarket,
   SuiPreMarket,
   AptosPreMarket,
+  deriveEvmWallet,
 } from '../blockchain';
+import { getOFTBridge } from './helpers/chain';
+import { waitForLayerZeroDelivery, lzScanUrl } from './helpers/layerzero';
 
 const WEI6 = 1_000_000;
 
@@ -490,7 +494,78 @@ tradeCommand
       let tx: any;
       if (isEvmChain(chainId)) {
         const pm = preMarket as EvmPreMarket;
-        const tokenAddress = options.tokenAddress ?? tokenAddressFromApi;
+
+        // OFT pre-flight: check if token has cross-chain bridge requirement
+        let tokenAddressOverride: string | undefined;
+        const resolvedTokenData = UUID_REGEX.test(orderIdArg.trim()) ? (await (async () => {
+          const res = await apiClient.getOrder(orderIdArg);
+          const o = (res as any)?.data ?? res;
+          return o?.offer?.token ?? o?.token;
+        })()) : undefined;
+
+        if (resolvedTokenData?.tge_oft_address) {
+          const tgeToken = resolvedTokenData;
+          tokenAddressOverride = tgeToken.tge_oft_address;
+
+          const oftBridge = getOFTBridge(
+            {
+              tge_oft_address: tgeToken.tge_oft_address,
+              tge_network_id: tgeToken.tge_network_id,
+              tge_adapter_address: tgeToken.tge_adapter_address,
+              tge_native_adapter_address: tgeToken.tge_native_adapter_address,
+              tge_token_address: tgeToken.tge_token_address,
+            },
+            chainId,
+            mnemonic
+          );
+
+          const walletAddress = deriveEvmWallet(mnemonic).address;
+
+          spinner.text = 'Checking OFT balance...';
+          const [oftBalance, oftDecimals, originBalance, originDecimals] = await Promise.all([
+            oftBridge.getOFTBalance(walletAddress),
+            oftBridge.getOFTDecimals(),
+            oftBridge.getOriginTokenBalance(walletAddress),
+            oftBridge.getOriginDecimals(),
+          ]);
+
+          const amountForBridge = options.amount != null ? parseFloat(options.amount) : tokenAmountFromApi;
+          const requiredRaw = amountForBridge != null
+            ? parseUnits(amountForBridge.toString(), oftDecimals)
+            : 0n;
+
+          if (requiredRaw > 0n && oftBalance < requiredRaw) {
+            spinner.stop();
+            const symbol = tgeToken.symbol ?? 'TOKEN';
+            console.log('\n  Insufficient OFT tokens for settlement:');
+            console.log(`    OFT balance (trading chain): ${formatUnits(oftBalance, oftDecimals)} ${symbol}`);
+            console.log(`    Required for settlement:     ${formatUnits(requiredRaw, oftDecimals)} ${symbol}`);
+            console.log(`    Origin token balance:        ${formatUnits(originBalance, originDecimals)} ${symbol}\n`);
+
+            const { doBridge } = await inquirer.prompt([{
+              type: 'confirm',
+              name: 'doBridge',
+              message: `Bridge ${formatUnits(requiredRaw, oftDecimals)} ${symbol} from origin chain now?`,
+              default: true,
+            }]);
+
+            if (!doBridge) {
+              console.log(`\nRun manually: whales bridge to-oft --token-uuid ${orderUUID ?? orderIdArg}`);
+              return;
+            }
+
+            spinner.start('Submitting bridge transaction...');
+            const { txHash } = await oftBridge.bridgeToOFT(requiredRaw);
+            spinner.succeed(`Bridge submitted: ${txHash}`);
+            console.log(`  ${lzScanUrl(txHash)}\n`);
+
+            await waitForLayerZeroDelivery(txHash);
+            spinner.start('Settling order...');
+          }
+        }
+
+        // Use OFT token address for settlement if applicable
+        const tokenAddress = tokenAddressOverride ?? options.tokenAddress ?? tokenAddressFromApi;
         const amountNum = options.amount != null ? parseFloat(options.amount) : tokenAmountFromApi;
         if (!tokenAddress || amountNum == null) {
           throw new Error('EVM settle requires --token-address and --amount (or pass an order UUID to auto-fetch from API)');
