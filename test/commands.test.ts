@@ -80,4 +80,21 @@ describe('CLI Commands', () => {
     const { stdout } = await execAsync(`${CLI_PATH} status --help`);
     expect(stdout).toContain('Check API connectivity');
   });
+
+  test('whales bridge --help', async () => {
+    const { stdout } = await execAsync(`${CLI_PATH} bridge --help`);
+    expect(stdout).toContain('Bridge tokens between chains via LayerZero OFT');
+  });
+
+  test('whales bridge to-oft --help', async () => {
+    const { stdout } = await execAsync(`${CLI_PATH} bridge to-oft --help`);
+    expect(stdout).toContain('--token-uuid');
+    expect(stdout).toContain('--quote');
+  });
+
+  test('whales bridge to-origin --help', async () => {
+    const { stdout } = await execAsync(`${CLI_PATH} bridge to-origin --help`);
+    expect(stdout).toContain('--token-uuid');
+    expect(stdout).toContain('--quote');
+  });
 });

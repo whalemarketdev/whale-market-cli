@@ -31,6 +31,7 @@ import { statusCommand } from './commands/status';
 import { shellCommand } from './commands/shell';
 import { upgradeCommand } from './commands/upgrade';
 import { helpCommand } from './commands/help';
+import { bridgeCommand } from './commands/bridge';
 import { createCompletionCommand } from './commands/completion';
 
 const program = new Command();
@@ -64,6 +65,7 @@ program.addCommand(bookCommand);
 program.addCommand(referralCommand);
 program.addCommand(networksCommand);
 program.addCommand(statusCommand);
+program.addCommand(bridgeCommand);
 program.addCommand(shellCommand);
 program.addCommand(upgradeCommand);
 program.addCommand(helpCommand);
